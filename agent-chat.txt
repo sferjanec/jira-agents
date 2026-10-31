@@ -1,0 +1,479 @@
+The architect now wants me to see if we can generate code features from a Jira description. I wasn't sure how to get started, other than to consider taking a description of a feature and rewriting it as an .md file with specific tasks for an agent.
+
+
+
+Would the flow be to have one agent pull the description down, analyze it for properly formatted instructions for agent consumption, and then pass it off for another agent to build the feature or scaffold the code regarding the feature. Im not yet sure 
+
+Yes, your intuition to translate the human Jira description into a structured Markdown specification (SPEC.md or TASK.md) before writing any code is the industry standard pattern for agentic software engineering.
+
+If you hand an ambiguous, human-written Jira description directly to a code-generation model, it tends to hallucinate architecture, make arbitrary naming choices, and write disconnected code that doesn't fit your existing patterns.
+
+Separating Specification / Architectural Planning from Code Scaffolding / Implementation creates a deterministic checkpoint.
+
+The Recommended Multi-Agent Flow
+                      [ Jira Ticket Description ]
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Agent 1: The Product / Specification Architect (Planner)               │
+│ • Fetches Jira description & acceptance criteria                       │
+│ • Inspects repo context (file paths, conventions, base classes)        │
+│ • Synthesizes a structured `TASK.md` execution plan                    │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Passes structured `TASK.md`
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Human Checkpoint (Optional in VS Code / Copilot)                       │
+│ • Developer glances at the `TASK.md` plan before files are touched     │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Agent 2: The Scaffolding / Implementation Engineer (Builder)           │
+│ • Reads `TASK.md` sequentially                                         │
+│ • Generates boilerplate, interfaces, services, and DTOs                │
+│ • Generates corresponding unit test skeletons                          │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Emits scaffolded files
+                                   ▼
+                       [ Git Working Tree / PR ]
+Step 1: Agent 1 (The Planner) Generates the TASK.md
+Agent 1 does not write implementation code. Its entire job is context grounding and ambiguity elimination. Jira tickets are notoriously loose (e.g., "Add audit export endpoint for transactions"). Agent 1 turns that into an unambiguous contract.
+
+The Prompting Contract for Agent 1
+You instruct Agent 1 with a strict output format. A solid TASK.md output structure looks like this:
+
+Markdown
+# Feature Plan: [Jira Key] - [Summary]
+
+## 1. Intent & Acceptance Criteria
+- Core Objective: ...
+- In Scope: ...
+- Out of Scope: ...
+
+## 2. Architectural Boundaries
+- Target Layer: (e.g., Controller, Service, DTO, Repository)
+- Target Package/Namespace: (e.g., `com.company.audit.service` or `App.Services.Audit`)
+- Patterns/Conventions: (e.g., Record classes for DTOs, dependency injection via constructor)
+
+## 3. Atomic Scaffolding Steps
+- [ ] Task 1: Create `ExportAuditRequest` & `ExportAuditResponse` models
+- [ ] Task 2: Define `IAuditExportService` interface contract
+- [ ] Task 3: Implement `AuditExportService` skeleton with error handling stubs
+- [ ] Task 4: Scaffold unit test suite `AuditExportServiceTests` covering happy path and 404/empty responses
+Why this matters: When an agent produces this document first, it burns planning tokens on the design phase rather than trial-and-error code generation.
+
+Step 2: Agent 2 (The Builder) Consumes the TASK.md
+Agent 2 operates in an execution-only mindset. Because the paths, naming conventions, and interfaces were established in Step 1, Agent 2's system prompt is simple:
+
+"You are an enterprise scaffolding engineer. Implement the tasks outlined in the attached specification step by step. Do not invent endpoints or fields outside the specification. Emit complete file stubs including imports, type definitions, and standard error handling."
+
+In a VS Code + GitHub Copilot setup, this can be triggered in two ways:
+
+Automated MCP Tool: An MCP tool scaffold_feature(taskSpecPath: string) that executes the generation and writes files directly to the workspace via Node’s fs/promises.
+
+Copilot Native Chat: The developer opens the generated TASK.md in VS Code and tells Copilot: @workspace Implement the tasks listed in #file:TASK.md.
+
+Key Architectural Guardrails for the PoC
+1. Context Grounding (The "Empty Canvas" Trap)
+If Agent 1 only reads the Jira description, it won't know your repository's structure. For example, it might scaffold a standard Express router when your project actually uses NestJS or Fastify, or assume camelCase when your models use snake_case.
+
+The Fix: Give Agent 1 access to a lightweight repo-indexing tool (or pass a short "conventions snippet" in its system prompt) specifying:
+
+Framework & runtime (e.g., Spring Boot 3 / TypeScript Node / ASP.NET Core)
+
+Target project directories (src/models, src/services, test/)
+
+Existing naming conventions
+
+2. Scope Creep Suppression
+Feature descriptions often say things like: "Must be resilient to database downtime and export to S3 and support email notifications."
+
+Agent 1 should actively categorize items into Phase 1: Core Scaffolding vs. Phase 2: External Dependencies.
+
+For a PoC, constrain Agent 2 to scaffolding interfaces, data transfer objects, core method signatures, and unit test suites—leaving third-party external I/O integration as TODO comments or mock adapters.
+
+3. Test-First Scaffolding
+Have Agent 2 generate the unit test harness alongside the interfaces. If Agent 2 scaffolds AuditService.ts and AuditService.spec.ts with empty mocks, the developer gets an immediate, runnable feedback loop inside VS Code (npm test or mvn test) before writing any business logic.
+
+Summary Checklist to Get Started
+Build Tool 1 (create_feature_spec): Calls your Jira MCP tool to fetch the ticket description, applies an architectural planner prompt, and writes specs/{TICKET_KEY}.md directly to the local workspace.
+
+Review Checkpoint: Open the generated .md in VS Code to ensure the plan makes architectural sense.
+
+Build Tool 2 (scaffold_from_spec) or use Copilot: Feed that .md into your code generation agent to produce the files and test skeletons.
+
+Want to draft the system prompt and schema for Agent 1 to generate this TASK.md specification?
+
+Yes
+yes could you help me draft that?
+
+Here is the production-ready system prompt, schema contract, and TypeScript MCP wrapper to power Agent 1 (The Specification Architect).
+
+1. Agent 1 System Prompt (prompts/spec-architect.md)
+Markdown
+You are a Principal Software Architect and Technical Product Specialist. Your task is to ingest an unstructured or semi-structured Jira issue description and synthesize a strict, deterministic, and unambiguous technical execution plan (`TASK.md`).
+
+This specification will be consumed directly by an automated Scaffolding and Code Generation Agent. Do not write feature code. Your sole output is an implementation plan that leaves zero architectural decisions to the downstream coding model.
+
+### Operational Guidelines
+
+1. **Disambiguate Intent:**
+   - Extract the core business problem and technical acceptance criteria.
+   - Separate explicit functional requirements from ambient conversation or ticket boilerplate.
+   - Categorize scope strictly into "In-Scope (Scaffold Now)" versus "Out-of-Scope / Future Iteration".
+
+2. **Ground Architecture & Component Boundaries:**
+   - Identify concrete layers: DTOs/Contracts, Domain Services, Controller/API endpoints, Persistence/Repositories, and Test Suites.
+   - Define exact class, interface, method, and file names.
+   - Enforce architectural patterns (e.g., explicit constructor injection, immutable DTOs, interface segregation, strongly typed request/response boundaries).
+
+3. **Establish Concrete Contracts:**
+   - Define exact payload signatures (field names, types, nullability, validation constraints).
+   - Define HTTP status codes, exceptions, or error envelopes for failure modes.
+
+4. **Decompose into Atomic, Ordered Tasks:**
+   - Organize implementation into sequential tasks where each step builds logically on the previous one.
+   - Mandate test scaffolding alongside or prior to service implementation stubs.
+   - Ensure every file path is explicit relative to the project root.
+
+### Guardrails
+- NEVER output generic placeholders like `// implement logic here` or `<insert fields>`.
+- Keep scaffolding boundaries decoupled from external production I/O (use mockable interfaces or adapters).
+- Output strictly valid Markdown following the schema below.
+2. Output Schema Contract (TASK.md Template)
+Instruct Agent 1 to adhere strictly to this Markdown template:
+
+Markdown
+# Specification: [JIRA-KEY] - [Summary]
+
+> **Status:** READY FOR SCAFFOLDING  
+> **Source Ticket:** [JIRA-KEY]  
+> **Generated:** YYYY-MM-DD  
+
+---
+
+## 1. Executive Summary & Boundaries
+
+### Core Objective
+[Concise 1-2 sentence technical goal of what is being built]
+
+### Scope Matrix
+| In-Scope (Scaffold Now) | Out-of-Scope (Deferred / External) |
+| :--- | :--- |
+| • [Concrete component / DTO to generate] | • [External live network integrations] |
+| • [Interface and service skeleton] | • [Complex batch schedules / UI styling] |
+
+---
+
+## 2. Technical Contracts & Signatures
+
+### Data Models & DTOs
+- **Target Path:** `src/.../models/`
+- **Contracts:**
+  - `[ModelName]`:
+    - `fieldA`: `type` (Required, Description/Validation)
+    - `fieldB`: `type` (Optional, Nullable)
+
+### Service & API Interfaces
+- **Target Path:** `src/.../services/`
+- **Method Signatures:**
+  - `methodName(request: RequestType): Promise<ResponseType>`
+    - *Exceptions/Errors:* `NotFoundException`, `ValidationException`
+
+---
+
+## 3. Sequential Implementation Plan
+
+- [ ] **Step 1: Models & DTO Contracts**
+  - **File:** `src/.../models/[ContractName].ts`
+  - **Action:** Define interfaces, request/response records, and validation types.
+
+- [ ] **Step 2: Core Service Interface**
+  - **File:** `src/.../services/I[ServiceName].ts`
+  - **Action:** Declare method signatures, parameters, and return types.
+
+- [ ] **Step 3: Service Stub & Exception Handling**
+  - **File:** `src/.../services/[ServiceName].ts`
+  - **Action:** Implement interface with constructor injection, input validation guards, and stubbed responses.
+
+- [ ] **Step 4: Unit Test Harness**
+  - **File:** `test/.../[ServiceName].spec.ts`
+  - **Action:** Scaffold test suites covering:
+    1. Happy path input returning expected response shape.
+    2. Invalid payload triggering validation error.
+    3. Mocked dependency failure handling.
+3. TypeScript MCP Tool Handler Implementation
+Here is how you wire this into your TypeScript MCP server to fetch the Jira description, call the planning model, and write the resulting TASK.md to disk:
+
+TypeScript
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
+interface JiraIssueDetails {
+  key: string;
+  summary: string;
+  description: string;
+  issueType: string;
+}
+
+// 1. Fetch raw issue from Jira
+async function getJiraIssue(issueKey: string): Promise<JiraIssueDetails> {
+  // Call Jira Cloud REST API: /rest/api/3/issue/{issueKey}?fields=summary,description,issuetype
+  return {
+    key: issueKey,
+    summary: "Export Audit Log API Endpoint",
+    description: "Need an endpoint to export user audit logs filtered by date range and event type.",
+    issueType: "Story"
+  };
+}
+
+// 2. LLM Call to run Agent 1 (The Planner)
+async function generateSpecification(issue: JiraIssueDetails, techStackContext: string): Promise<string> {
+  const systemPrompt = `[Insert System Prompt from Section 1 above]`;
+  
+  const userContent = `
+Jira Ticket: ${issue.key}
+Type: ${issue.issueType}
+Summary: ${issue.summary}
+
+Description:
+${issue.description}
+
+Target Project Context & Conventions:
+${techStackContext}
+`;
+
+  // Invoke your LLM client (OpenAI, Gemini, Ollama, etc.) with temperature: 0.1
+  // return response.text;
+  return `# Specification: ${issue.key} - ${issue.summary}\n\n...`;
+}
+
+// 3. Register Tool in MCP Server
+export function registerSpecArchitectTool(server: Server) {
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "create_feature_spec",
+        description: "Fetches a Jira ticket and uses an architectural planner agent to generate a deterministic TASK.md file for code scaffolding.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issueKey: { type: "string", description: "Jira issue key (e.g., PROJ-452)" },
+            workspaceRoot: { type: "string", description: "Absolute path to workspace root" },
+            stackConventions: { 
+              type: "string", 
+              description: "Optional notes on tech stack, framework, or target directories",
+              default: "TypeScript Node.js / Express, standard layered architecture"
+            }
+          },
+          required: ["issueKey", "workspaceRoot"]
+        }
+      }
+    ]
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (request.params.name === "create_feature_spec") {
+      const { issueKey, workspaceRoot, stackConventions } = request.params.arguments as {
+        issueKey: string;
+        workspaceRoot: string;
+        stackConventions?: string;
+      };
+
+      const issue = await getJiraIssue(issueKey);
+      const specMarkdown = await generateSpecification(issue, stackConventions || "Standard TypeScript");
+
+      // Save file locally for human review or Agent 2 execution
+      const specDir = path.join(workspaceRoot, ".specs");
+      await fs.mkdir(specDir, { recursive: true });
+      
+      const filePath = path.join(specDir, `${issueKey}-TASK.md`);
+      await fs.writeFile(filePath, specMarkdown, "utf-8");
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Specification generated and saved to ${filePath}.\n\nReview the plan or execute Agent 2 using: @workspace Scaffold files from #${issueKey}-TASK.md`
+          }
+        ]
+      };
+    }
+    throw new Error(`Tool not found: ${request.params.name}`);
+  });
+}
+How the Developer Uses This in VS Code
+In Copilot Chat: @jira-agent /create_feature_spec issueKey: "PROJ-452".
+
+The MCP server queries Jira, transforms the description into .specs/PROJ-452-TASK.md, and writes it to the local workspace.
+
+The developer glances over the Markdown file to confirm the boundaries, endpoints, and file paths look correct.
+
+The developer prompts Copilot: @workspace Scaffold the files and tests defined in #PROJ-452-TASK.md.
+
+One thought. How would the code be generated for a given repo? The task.md template would have to be tailored for each repo so it understands project structure, file paths, controllers, models, etc?
+
+You do not need to rewrite the prompt or hardcode a unique TASK.md template for every repository.
+
+Hardcoding repo structures into prompt templates creates brittle maintenance overhead across projects. Instead, decouple the universal planning structure from dynamic repo inspection.
+
+The standard approach uses a two-phase architecture where Agent 1 automatically extracts the target repository's topology and conventions before writing the specification.
+
+The Dynamic Repository Discovery Pipeline
+Rather than guessing where files belong, Agent 1 executes a lightweight discovery phase:
+
+                  [ Jira Issue Description ]
+                              │
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │ 1. Local Workspace Inspection (Agent 1)   │
+        │ • Reads Repo Config (.github, package.json│
+        │   pom.xml, or .csproj)                    │
+        │ • Samples directory tree & conventions    │
+        │ • Inspects existing neighbor patterns     │
+        └─────────────────────┬─────────────────────┘
+                              │ Dynamic Repo Context
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │ 2. Context Injection into Generic Planner │
+        │ • Planner merges Jira requirements with   │
+        │   discovered folder structure & stack     │
+        └─────────────────────┬─────────────────────┘
+                              │
+                              ▼
+             [ Generated Repo-Accurate TASK.md ]
+                              │
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │ 3. Scaffolding (Agent 2 / Copilot)        │
+        │ • Generates code matching actual repo     │
+        │   paths, namespaces, and patterns         │
+        └───────────────────────────────────────────┘
+Phase 1: Automated Repo Introspection
+When your MCP server runs the create_feature_spec tool, it receives the workspaceRoot path. Before calling the LLM, the server performs three quick filesystem reads:
+
+1. Ingest Repo Custom Instructions (Zero Inference Cost)
+Most repositories designed for AI workflows maintain a convention file:
+
+Copilot Instructions: .github/copilot-instructions.md   
+GitHub
+
+General AI Rules: CLAUDE.md, AGENTS.md, or .cursorrules
+
+If any of these exist, read and pass them directly into the prompt as the repository's ground truth.
+
+2. Detect the Stack Manifest
+Inspect the root directory for build definitions:
+
+pom.xml / build.gradle 
+→ Java / Spring Boot conventions (src/main/java/...).
+
+*.csproj 
+→ .NET conventions (Namespaces, Controllers/, Services/).
+
+package.json 
+→ TypeScript / Node / Frontend conventions (src/, @nestjs, etc.).
+
+3. Shallow Directory Tree Scan
+Generate a pruned directory outline (excluding node_modules, target, bin, obj, .git):
+
+Plaintext
+src/
+├── api/
+│   └── v1/
+├── core/
+│   ├── models/
+│   └── services/
+└── test/
+Passing this shallow tree takes only ~200 tokens but anchors the LLM to existing project paths.
+
+Phase 2: Finding a "Peer" Example (Exemplar Pattern)
+To ensure generated controllers or services follow the exact syntax, DI pattern, and naming used in that specific codebase, Agent 1 can inspect one existing peer file.
+
+If the Jira ticket is about adding a new API endpoint, the agent finds an existing controller/service pair:
+
+Glob search: *Controller.* or *Service.*.
+
+Grab the first small controller (or its interface/imports).
+
+Feed that snippet to Agent 1 as a structural exemplar:
+
+"Here is an existing controller in this repo (src/controllers/user.controller.ts). Ensure all new endpoints and classes match its decorator style, error envelope, and dependency injection style."
+
+How to Implement This in Your TypeScript MCP Server
+Integrate dynamic context collection directly into your MCP tool handler:
+
+TypeScript
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
+interface RepoContext {
+  stackInfo: string;
+  projectRules: string;
+  directoryStructure: string;
+}
+
+// Inspect workspace on the fly
+async function gatherRepoContext(workspaceRoot: string): Promise<RepoContext> {
+  // 1. Check for Copilot / Agent instruction files
+  let projectRules = "";
+  const candidateRules = [
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "CLAUDE.md"
+  ];
+  for (const rulePath of candidateRules) {
+    try {
+      projectRules = await fs.readFile(path.join(workspaceRoot, rulePath), "utf-8");
+      break;
+    } catch {
+      // Continue checking
+    }
+  }
+
+  // 2. Detect build stack
+  let stackInfo = "Generic/Unknown";
+  const files = await fs.readdir(workspaceRoot);
+  if (files.includes("pom.xml")) stackInfo = "Java / Maven (Spring Boot)";
+  else if (files.some(f => f.endsWith(".csproj"))) stackInfo = "C# / .NET";
+  else if (files.includes("package.json")) {
+    const pkg = JSON.parse(await fs.readFile(path.join(workspaceRoot, "package.json"), "utf-8"));
+    stackInfo = `Node.js (${pkg.dependencies ? Object.keys(pkg.dependencies).slice(0, 5).join(", ") : "Vanilla"})`;
+  }
+
+  // 3. Simple top-level folder scan
+  const dirStructure = files
+    .filter(f => !f.startsWith(".") && !["node_modules", "target", "bin", "dist"].includes(f))
+    .join(", ");
+
+  return { stackInfo, projectRules, directoryStructure: dirStructure };
+}
+The Universal Template Strategy
+With dynamic discovery in place, the prompt template remains universal across any codebase:
+
+Markdown
+You are generating a TASK.md specification for the following repository:
+
+Target Repository Profile:
+- Detected Stack: {{stackInfo}}
+- Top-level Layout: {{directoryStructure}}
+- Workspace AI Conventions:
+{{projectRules}}
+
+Rules for Scaffolding:
+1. Align all file paths with the observed layout above (e.g., if the project uses `src/main/java/...`, place classes there; if it uses `Controllers/`, place controllers there).
+2. Follow the architectural paradigm established in the workspace conventions.
+3. If no conventions are specified, use standard layered clean architecture:
+   - Contracts/DTOs
+   - Service interfaces
+   - Service implementation stubs
+   - Unit test suites
+Result
+One MCP Server: Works across Java, .NET, TypeScript, Python, or Go codebases without prompt editing.
+
+Deterministic Output: Agent 1 generates file paths that exist in the target project.
+
+Seamless Handoff: When Agent 2 (or GitHub Copilot) receives the generated TASK.md, it can run touch <path> or generate the files without guessing file locations or misaligning module imports.

@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "jira-mcp": {
+      "type": "stdio",
+      "command": "npm",
+      "args": ["start"],
+      "cwd": "${workspaceFolder}",
+      "env": {}
+    }
+  }
+}

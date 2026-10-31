@@ -1,0 +1,21 @@
+Rename Ready for Review tab to Ready for Inspection/Review
+Change the visible label "Ready for Review" to "Ready for Inspection/Review" on the Manager page.
+
+Location:
+Application: Manager UI
+Page: Manager
+Repository: mock-manager-ui
+Scope: MVC app
+Relevant component/file: unknown
+
+Current behavior:
+The Manager page displays a tab with "Ready for Review".
+
+Expected behavior:
+The same tab displays "Ready for Inspection/Review".
+
+Acceptance Criteria:
+1. The Manager page displays a tab for "Ready for Inspection/Review" instead of "Ready for Review".
+2. The tab continues to display the same underlying data.
+3. Column order and visibility remain unchanged.
+4. Tests that assert the old tab heading are updated and coverage verifies the new tab heading.

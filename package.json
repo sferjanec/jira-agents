@@ -1,0 +1,37 @@
+{
+  "name": "jira-mcp",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "example:client": "tsx src/example-client.ts",
+    "example:get_jira_issue": "tsx src/example-get-jira-issue.ts",
+    "example:triage": "tsx src/example-triage.ts",
+    "example:triage:analyze": "tsx src/example-triage-analyzer.ts",
+    "example:copilot-sdk": "tsx src/example-copilot-sdk.ts",
+    "example:audit:demo": "tsx src/example-audit-demo.ts",
+    "example:audit": "tsx src/example-audit.ts",
+    "simulate": "tsx src/example-simulate.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/jira/triage.test.ts src/tools/triage.test.ts src/agents/audit.test.ts src/tools/auditJiraDuplicates.test.ts src/tools/createFeatureSpec.test.ts src/agents/featureSpec.test.ts src/agents/repoContext.test.ts src/agents/readPolicy.test.ts src/agents/featureBuilder.test.ts src/tools/buildFeatureFromSpec.test.ts src/cli/audit.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.23",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "axios": "^1.20.0",
+    "dotenv": "^17.4.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,5 @@
+Ready tab shows items that were already approved or rejected
+Users are complaining that the Ready for Review tab on the Manager page is cluttered. They say they see
+things in there that have already been dealt with, like approved and rejected items, so they can't tell what
+still needs their attention. Drafts correctly stay out. The count they expect is only the items waiting on a
+reviewer. Please fix, and make sure it does not break the other tabs. Not sure where the problem is.
