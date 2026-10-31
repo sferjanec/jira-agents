@@ -17,7 +17,15 @@ export type CreateFeatureSpecInput = z.input<typeof createFeatureSpecInputSchema
 export type FeatureSpecService = (
     input: CreateFeatureSpecInput,
     signal: AbortSignal
-) => Promise<{ issueKey: string; path: string; plan: string }>;
+) => Promise<{
+    issueKey: string;
+    path?: string;
+    plan: string;
+    needsClarification: boolean;
+    clarifications: string[];
+}>;
+
+const clarificationPattern = /^- NEEDS CLARIFICATION:\s*(.+)$/gim;
 
 export function createFeatureSpecService(
     reader: JiraReader,
@@ -53,8 +61,13 @@ export function createFeatureSpecService(
         signal.throwIfAborted();
         const plan = await createFeaturePlan(issue, repoContext, model, signal);
         signal.throwIfAborted();
+        const clarifications = [...plan.matchAll(clarificationPattern)].map((match) => match[1].trim());
+        if (clarifications.length > 0) {
+            // Not saved: an existing plan is never overwritten, so saving would block the rerun after the ticket is updated.
+            return { issueKey: issue.key, plan, needsClarification: true, clarifications };
+        }
         const path = await saveFeatureSpec(repoContext.workspaceRoot, issue.key, plan);
-        return { issueKey: issue.key, path, plan };
+        return { issueKey: issue.key, path, plan, needsClarification: false, clarifications };
     };
 }
 
@@ -76,6 +89,15 @@ export function registerCreateFeatureSpec(server: McpServer, service: FeatureSpe
         const signal = AbortSignal.any([extra.signal, AbortSignal.timeout(180000)]);
         try {
             const result = await service(input, signal);
+            if (result.needsClarification) {
+                return {
+                    structuredContent: result,
+                    content: [{
+                        type: "text" as const,
+                        text: `${result.issueKey} needs clarification before a plan can be saved. No file was written. Update the ticket with:\n${result.clarifications.map((item) => `- ${item}`).join("\n")}\nThen run this tool again.`
+                    }]
+                };
+            }
             return {
                 structuredContent: result,
                 content: [{

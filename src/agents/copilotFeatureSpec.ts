@@ -1,7 +1,7 @@
 import { CopilotClient, ToolSet } from "@github/copilot-sdk";
 import { FeatureSpecFailure } from "./featureSpecFailure.js";
 import type { FeatureSpecModel } from "./featureSpec.js";
-import { isReadAllowed } from "./readPolicy.js";
+import { checkRead, ReadBudget } from "./readPolicy.js";
 
 const stageTimeoutMs = 170000;
 
@@ -27,6 +27,7 @@ export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, in
     const stageSignal = AbortSignal.any([signal, AbortSignal.timeout(stageTimeoutMs)]);
     const debug = process.env.EXPLORE_DEBUG === "1";
     const stats = { approved: 0, denied: 0 };
+    const budget = new ReadBudget();
     try {
         await using client = new CopilotClient({ workingDirectory: workspaceRoot });
         stageSignal.throwIfAborted();
@@ -36,14 +37,17 @@ export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, in
             workingDirectory: workspaceRoot,
             availableTools: new ToolSet().addBuiltIn(["view", "grep", "glob"]),
             onPermissionRequest: (request) => {
-                const allowed = request.kind === "read" && isReadAllowed(workspaceRoot, request.path);
+                const denial = request.kind === "read"
+                    ? budget.consume(checkRead(workspaceRoot, request.path))
+                    : "Only reading source files inside the repository is permitted.";
+                const allowed = denial === undefined;
                 stats[allowed ? "approved" : "denied"] += 1;
                 if (debug) {
                     console.error(`[explore] ${allowed ? "ALLOW" : "DENY "} ${request.kind} ${"path" in request ? request.path : ""}`);
                 }
                 return allowed
                     ? { kind: "approve-once" }
-                    : { kind: "reject", feedback: "Only reading source files inside the repository is permitted." };
+                    : { kind: "reject", feedback: denial };
             },
             enableConfigDiscovery: false,
             systemMessage: { mode: "replace", content: instructions }

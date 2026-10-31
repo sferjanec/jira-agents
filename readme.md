@@ -46,6 +46,23 @@ tool sends bounded Jira and repository context to Copilot and consumes Copilot
 usage; run it only where permitted by your organization's data policy. Ticket
 descriptions and repository instructions are treated as untrusted content.
 
+#### Writing a ticket the planner can act on
+
+The planner finds code by searching for words from the ticket, so specific tickets
+produce better plans with fewer file reads. Include:
+
+- **Where:** the page, screen or URL (for example "Admin > Users > Edit user").
+- **What:** the exact label of the field or component, copied from the UI.
+- **Actual vs. expected:** what happens now and what should happen (for example,
+  "the Role drop-down lists Viewer and Editor but not Approver").
+- **Known names:** any class, template, endpoint or table names you already know.
+- **Where to look (optional):** hints such as "check both the view template and the service".
+
+Vague tickets still work, but the plan will contain `NEEDS CLARIFICATION:` entries
+under "Open questions" that list what to add. In that case the tool reports
+`needsClarification: true`, lists the questions, and writes no file, so after you
+update the ticket you can simply run it again.
+
 ### Build from a human-approved plan
 
 After a person has reviewed `.specs/{ISSUE-KEY}-TASK.md`, explicitly call

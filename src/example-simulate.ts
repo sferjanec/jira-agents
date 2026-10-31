@@ -28,7 +28,11 @@ const reader: JiraReader = {
 const signal = AbortSignal.timeout(command === "plan" ? 300000 : 360000);
 if (command === "plan") {
     const result = await createFeatureSpecService(reader)({ issueKey, workspaceRoot }, signal);
-    console.log(`Plan saved: ${result.path}\n\n${result.plan}`);
+    if (result.needsClarification) {
+        console.log(`NEEDS CLARIFICATION (nothing saved):\n${result.clarifications.map((item) => `- ${item}`).join("\n")}\n\n${result.plan}`);
+    } else {
+        console.log(`Plan saved: ${result.path}\n\n${result.plan}`);
+    }
 } else {
     console.log(JSON.stringify(await createFeatureBuildService()({ issueKey, workspaceRoot }, signal), null, 2));
 }

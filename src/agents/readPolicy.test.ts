@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { isReadAllowed } from "./readPolicy.js";
+import { checkRead, isReadAllowed, maxReadBytes, ReadBudget } from "./readPolicy.js";
 
 test("read policy allows source and blocks secrets, build output and escapes", async () => {
     const root = await mkdtemp(join(tmpdir(), "read-policy-"));
@@ -30,5 +30,29 @@ test("read policy allows source and blocks secrets, build output and escapes", a
     } finally {
         await rm(root, { recursive: true });
         await rm(outside, { recursive: true });
+    }
+});
+
+test("read policy blocks generated artifacts and oversized files, and the budget caps a session", async () => {
+    const root = await mkdtemp(join(tmpdir(), "read-policy-"));
+    try {
+        await mkdir(join(root, "locales"));
+        for (const file of ["logo.svg", "swagger.json", "openapi-v2.json", "coverage-report.xml", "app.min.css", "locales/en.json", "small.ts"]) {
+            await writeFile(join(root, file), "x");
+        }
+        await writeFile(join(root, "big.ts"), "x".repeat(maxReadBytes + 1));
+        for (const blocked of ["logo.svg", "swagger.json", "openapi-v2.json", "coverage-report.xml", "app.min.css", "locales/en.json", "big.ts"]) {
+            assert.equal(isReadAllowed(root, join(root, blocked)), false, blocked);
+        }
+        const small = checkRead(root, join(root, "small.ts"));
+        assert.equal(small.allowed, true);
+
+        const budget = new ReadBudget(2, 10);
+        assert.equal(budget.consume(small), undefined);
+        assert.equal(budget.consume(small), undefined);
+        assert.match(budget.consume(small) ?? "", /budget exhausted/);
+        assert.match(new ReadBudget().consume(checkRead(root, join(root, "big.ts"))) ?? "", /too large/);
+    } finally {
+        await rm(root, { recursive: true });
     }
 });

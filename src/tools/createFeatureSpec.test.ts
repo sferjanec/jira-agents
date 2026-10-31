@@ -54,6 +54,8 @@ test("create_feature_spec retrieves Jira, generates a plan, and writes only the 
             workspaceRoot: root
         }, new AbortController().signal);
         assert.equal(result.issueKey, "PROJ-452");
+        assert.equal(result.needsClarification, false);
+        assert.ok(result.path);
         assert.match(result.path, /\.specs\/PROJ-452-TASK\.md$/);
         assert.equal(await readFile(result.path, "utf8"), result.plan);
         assert.equal(
@@ -110,6 +112,23 @@ test("create_feature_spec rejects malformed Jira issue keys before retrieval", a
             workspaceRoot: root
         }, new AbortController().signal));
         assert.equal(calls, 0);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("create_feature_spec flags clarification requests and does not save the plan", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jira-feature-spec-"));
+    try {
+        const service = createFeatureSpecService(reader, async () => JSON.stringify({
+            ...plan,
+            openQuestions: ["NEEDS CLARIFICATION: Which drop-down on the admin page?"]
+        }));
+        const result = await service({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.equal(result.needsClarification, true);
+        assert.deepEqual(result.clarifications, ["Which drop-down on the admin page?"]);
+        assert.equal(result.path, undefined);
+        await assert.rejects(readFile(join(root, ".specs", "PROJ-452-TASK.md"), "utf8"));
     } finally {
         await rm(root, { recursive: true, force: true });
     }
