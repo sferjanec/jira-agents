@@ -1,0 +1,2 @@
+An input selection is missing in a field on a drop-down component in the admin page
+Please check both the view template and the service for the issue.
