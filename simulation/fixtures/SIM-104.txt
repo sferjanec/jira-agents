@@ -1,0 +1,2 @@
+The status filter on the manager page is missing an option
+Someone on the team said one of the choices is missing from the dropdown on the page. Please check the template and the service.

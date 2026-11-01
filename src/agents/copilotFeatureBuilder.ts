@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CopilotClient, ToolSet } from "@github/copilot-sdk";
+import { applyUsageEvent } from "../metrics/runMetrics.js";
 import { FeatureBuilderFailure } from "./featureBuilderFailure.js";
 import type { FeatureBuildContext, FeatureBuilderModel } from "./featureBuilder.js";
 
@@ -21,7 +22,7 @@ async function cancellable<T>(operation: Promise<T>, signal: AbortSignal): Promi
     }
 }
 
-export const copilotFeatureBuilderModel: FeatureBuilderModel = async (instructions, input, signal) => {
+export const copilotFeatureBuilderModel: FeatureBuilderModel = async (instructions, input, signal, telemetry) => {
     const workingDirectory = await mkdtemp(join(tmpdir(), "jira-mcp-feature-builder-"));
     const stageSignal = AbortSignal.any([signal, AbortSignal.timeout(120000)]);
     try {
@@ -35,6 +36,9 @@ export const copilotFeatureBuilderModel: FeatureBuilderModel = async (instructio
             enableConfigDiscovery: false,
             systemMessage: { mode: "replace", content: instructions }
         });
+        if (telemetry) {
+            session.on((event) => applyUsageEvent(telemetry, event));
+        }
         try {
             const response = await cancellable(session.sendAndWait({
                 prompt: JSON.stringify(input)

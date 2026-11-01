@@ -1,3 +1,4 @@
+import type { ModelTelemetry } from "../metrics/runMetrics.js";
 import { lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -32,7 +33,8 @@ export interface BuildOutput {
 export type FeatureBuilderModel = (
     instructions: string,
     input: FeatureBuildContext,
-    signal: AbortSignal
+    signal: AbortSignal,
+    telemetry?: ModelTelemetry
 ) => Promise<string>;
 
 const maxPlanCharacters = 30000;
@@ -298,7 +300,8 @@ const outputSchema = {
 export async function generateFeatureFiles(
     context: FeatureBuildContext,
     model: FeatureBuilderModel,
-    signal: AbortSignal
+    signal: AbortSignal,
+    telemetry?: ModelTelemetry
 ): Promise<BuildOutput> {
     const instructions = [
         "You are a repository implementation agent. A human explicitly invoked you for this approved feature plan.",
@@ -311,7 +314,7 @@ export async function generateFeatureFiles(
     ].join("\n");
     let response: string;
     try {
-        response = await model(instructions, context, signal);
+        response = await model(instructions, context, signal, telemetry);
     } catch {
         if (signal.aborted) {
             throw new FeatureBuilderFailure("REQUEST_CANCELLED");

@@ -24,7 +24,7 @@ Call `create_feature_spec` with an issue key and the absolute path to the reposi
 root. The tool reads the issue and a bounded set of repository details (a shallow
 directory listing, recognized build manifests, and selected instruction files),
 then asks a Copilot model for a structured plan. It writes only
-`.specs/{ISSUE-KEY}-TASK.md`; it does not generate source code or modify Jira.
+`.specs/{ISSUE-KEY}-TASK.md`; it does not generate source code, and by default it does not modify Jira (see the optional clarification comment below).
 Existing plans are never overwritten.
 
 ```json
@@ -60,8 +60,44 @@ produce better plans with fewer file reads. Include:
 
 Vague tickets still work, but the plan will contain `NEEDS CLARIFICATION:` entries
 under "Open questions" that list what to add. In that case the tool reports
-`needsClarification: true`, lists the questions, and writes no file, so after you
-update the ticket you can simply run it again.
+`needsClarification: true`, lists the questions, saves them to
+`.specs/{ISSUE-KEY}-CLARIFICATIONS.md` and writes no plan, so after you update the
+ticket you can simply run it again. The clarifications file is replaced on each
+run and deleted once a plan is saved.
+
+**Optional Jira comment (off by default).** Set `JIRA_POST_CLARIFICATIONS=true` in
+the server environment and the tool also adds one comment with the questions to
+the Jira ticket. This is the only Jira write in the project and needs a token
+with permission to comment. If posting fails, the run still succeeds and the
+result reports `jiraCommentPosted: false`. Each run posts a new comment, so
+repeated runs on an unchanged vague ticket add repeated comments. In the
+simulation, `SIM_POST_COMMENT=1` prints the comment instead of posting it.
+
+To try it against a real (test) Jira site with credentials in `.env`:
+
+```bash
+JIRA_POST_CLARIFICATIONS=true EXPLORE_DEBUG=1 npm run plan:jira -- DEMO-1 /absolute/path/to/repository
+```
+
+`EXPLORE_DEBUG=1` logs the HTTP status and Jira's error body if the comment fails.
+
+#### Run metrics and the agent label (both optional, off by default)
+
+- **Metrics:** set `METRICS_FILE` to an absolute path (for example
+  `/path/to/jira-agents/.metrics/runs.jsonl`) and every plan and build run appends one
+  JSON line: outcome, error code, time per step (Jira fetch, model, Jira write), token
+  counts from the Copilot SDK's usage events, model calls, reads approved and denied,
+  bytes read, and whether the read budget was exhausted. It holds numbers only: no
+  ticket text, prompts, file contents or plans. The file is git-ignored under
+  `.metrics/`, and a write failure never fails a run.
+- **Report:** `npm run metrics -- /path/to/runs.jsonl` (or with `METRICS_FILE` set)
+  prints clarification and budget-hit rates, token and time statistics, the slowest
+  step and the heaviest runs. The cost shown is the SDK's billing multiplier, not dollars.
+- **Agent label:** set `JIRA_AGENT_LABEL=agent-assisted` to add that label to every
+  ticket the planner handles (plan saved or clarification requested). Filter on it in
+  Jira to compare cycle time for agent-assisted and other tickets. Jira's own
+  created, in-progress and done dates supply the cycle time; these metrics supply cost
+  and speed. A failed label write does not fail the run. It needs a token that can edit issues.
 
 ### Build from a human-approved plan
 

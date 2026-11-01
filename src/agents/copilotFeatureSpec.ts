@@ -1,6 +1,7 @@
 import { CopilotClient, ToolSet } from "@github/copilot-sdk";
 import { FeatureSpecFailure } from "./featureSpecFailure.js";
 import type { FeatureSpecModel } from "./featureSpec.js";
+import { applyUsageEvent, type ModelTelemetry } from "../metrics/runMetrics.js";
 import { checkRead, ReadBudget } from "./readPolicy.js";
 
 const stageTimeoutMs = 170000;
@@ -23,7 +24,7 @@ async function cancellable<T>(operation: Promise<T>, signal: AbortSignal): Promi
 
 // The Copilot session is rooted at the repository and explores it itself. Only reads that
 // pass the read policy are approved; shell, write, network and every other request is rejected.
-export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, input, signal, workspaceRoot) => {
+export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, input, signal, workspaceRoot, telemetry) => {
     const stageSignal = AbortSignal.any([signal, AbortSignal.timeout(stageTimeoutMs)]);
     const debug = process.env.EXPLORE_DEBUG === "1";
     const stats = { approved: 0, denied: 0 };
@@ -42,6 +43,11 @@ export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, in
                     : "Only reading source files inside the repository is permitted.";
                 const allowed = denial === undefined;
                 stats[allowed ? "approved" : "denied"] += 1;
+                if (telemetry) {
+                    telemetry[allowed ? "readsApproved" : "readsDenied"] += 1;
+                    telemetry.bytesRead = budget.bytesRead;
+                    telemetry.budgetExhausted ||= budget.exhausted;
+                }
                 if (debug) {
                     console.error(`[explore] ${allowed ? "ALLOW" : "DENY "} ${request.kind} ${"path" in request ? request.path : ""}`);
                 }
@@ -52,6 +58,9 @@ export const copilotFeatureSpecModel: FeatureSpecModel = async (instructions, in
             enableConfigDiscovery: false,
             systemMessage: { mode: "replace", content: instructions }
         });
+        if (telemetry) {
+            session.on((event) => applyUsageEvent(telemetry, event));
+        }
         try {
             const response = await cancellable(session.sendAndWait({
                 prompt: JSON.stringify(input)

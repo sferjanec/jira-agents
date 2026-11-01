@@ -81,8 +81,17 @@ export function isReadAllowed(root: string, requested: string): boolean {
 export class ReadBudget {
     private reads = 0;
     private bytes = 0;
+    private exhaustedFlag = false;
 
     constructor(private readonly maxReads = 40, private readonly maxBytes = 600_000) {}
+
+    get bytesRead(): number {
+        return this.bytes;
+    }
+
+    get exhausted(): boolean {
+        return this.exhaustedFlag;
+    }
 
     // Returns a rejection reason when the request is denied, otherwise records it and returns undefined.
     consume(decision: ReadDecision): string | undefined {
@@ -90,6 +99,7 @@ export class ReadBudget {
             return decision.reason;
         }
         if (this.reads + 1 > this.maxReads || this.bytes + decision.bytes > this.maxBytes) {
+            this.exhaustedFlag = true;
             return "Read budget exhausted. Stop exploring and produce the answer from what you have already read.";
         }
         this.reads += 1;

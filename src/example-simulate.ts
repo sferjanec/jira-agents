@@ -27,9 +27,13 @@ const reader: JiraReader = {
 
 const signal = AbortSignal.timeout(command === "plan" ? 300000 : 360000);
 if (command === "plan") {
-    const result = await createFeatureSpecService(reader)({ issueKey, workspaceRoot }, signal);
+    // Stand-in for Jira comments so the flow can be tried offline; set SIM_POST_COMMENT=1 to enable it.
+    const commenter = process.env.SIM_POST_COMMENT === "1"
+        ? { async addComment(key: string, body: unknown) { console.log(`[sim] would comment on ${key}:\n${JSON.stringify(body, null, 2)}`); } }
+        : undefined;
+    const result = await createFeatureSpecService(reader, undefined, commenter)({ issueKey, workspaceRoot }, signal);
     if (result.needsClarification) {
-        console.log(`NEEDS CLARIFICATION (nothing saved):\n${result.clarifications.map((item) => `- ${item}`).join("\n")}\n\n${result.plan}`);
+        console.log(`NEEDS CLARIFICATION (no plan saved; questions in ${result.clarificationsPath}, jira comment posted: ${result.jiraCommentPosted ?? "off"}):\n${result.clarifications.map((item) => `- ${item}`).join("\n")}\n\n${result.plan}`);
     } else {
         console.log(`Plan saved: ${result.path}\n\n${result.plan}`);
     }

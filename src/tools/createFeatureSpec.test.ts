@@ -117,18 +117,99 @@ test("create_feature_spec rejects malformed Jira issue keys before retrieval", a
     }
 });
 
-test("create_feature_spec flags clarification requests and does not save the plan", async () => {
+const vaguePlan = JSON.stringify({
+    ...plan,
+    openQuestions: ["NEEDS CLARIFICATION: Which drop-down on the admin page?"]
+});
+const clarificationsFile = (root: string) => join(root, ".specs", "PROJ-452-CLARIFICATIONS.md");
+
+test("create_feature_spec flags clarification requests, saves a clarifications file and no plan", async () => {
     const root = await mkdtemp(join(tmpdir(), "jira-feature-spec-"));
     try {
-        const service = createFeatureSpecService(reader, async () => JSON.stringify({
-            ...plan,
-            openQuestions: ["NEEDS CLARIFICATION: Which drop-down on the admin page?"]
-        }));
+        const service = createFeatureSpecService(reader, async () => vaguePlan);
         const result = await service({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
         assert.equal(result.needsClarification, true);
         assert.deepEqual(result.clarifications, ["Which drop-down on the admin page?"]);
         assert.equal(result.path, undefined);
+        assert.equal(result.jiraCommentPosted, undefined);
+        assert.equal(result.clarificationsPath, clarificationsFile(root));
+        assert.match(await readFile(clarificationsFile(root), "utf8"), /- Which drop-down on the admin page\?/);
         await assert.rejects(readFile(join(root, ".specs", "PROJ-452-TASK.md"), "utf8"));
+
+        // A rerun replaces the file, and a later successful plan removes it.
+        const rerun = createFeatureSpecService(reader, async () => JSON.stringify({
+            ...plan,
+            openQuestions: ["NEEDS CLARIFICATION: Which option is missing?"]
+        }));
+        await rerun({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        const replaced = await readFile(clarificationsFile(root), "utf8");
+        assert.match(replaced, /Which option is missing/);
+        assert.doesNotMatch(replaced, /drop-down/);
+
+        const good = createFeatureSpecService(reader, async () => JSON.stringify(plan));
+        const final = await good({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.equal(final.needsClarification, false);
+        await assert.rejects(readFile(clarificationsFile(root), "utf8"));
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("create_feature_spec posts the clarification comment only when a commenter is provided", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jira-feature-spec-"));
+    try {
+        const comments: { key: string; body: unknown }[] = [];
+        const service = createFeatureSpecService(reader, async () => vaguePlan, {
+            async addComment(key, body) {
+                comments.push({ key, body });
+            }
+        });
+        const result = await service({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.equal(result.jiraCommentPosted, true);
+        assert.equal(comments.length, 1);
+        assert.equal(comments[0].key, "PROJ-452");
+        assert.match(JSON.stringify(comments[0].body), /Which drop-down on the admin page\?/);
+        assert.match(JSON.stringify(comments[0].body), /\[Agent\]/);
+
+        const failing = createFeatureSpecService(reader, async () => vaguePlan, {
+            async addComment() {
+                throw new Error("secret token details");
+            }
+        });
+        const failed = await failing({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.equal(failed.needsClarification, true);
+        assert.equal(failed.jiraCommentPosted, false);
+        assert.doesNotMatch(failed.jiraCommentError ?? "", /secret/);
+        assert.ok(await readFile(clarificationsFile(root), "utf8"));
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("create_feature_spec adds the agent label when a labeler is provided and survives a label failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jira-feature-spec-"));
+    try {
+        const labeled: string[] = [];
+        const service = createFeatureSpecService(reader, async () => JSON.stringify(plan), undefined, {
+            label: "agent-assisted",
+            async addLabel(key) {
+                labeled.push(key);
+            }
+        });
+        const result = await service({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.deepEqual(labeled, ["PROJ-452"]);
+        assert.equal(result.jiraLabelAdded, true);
+        assert.equal(result.needsClarification, false);
+
+        const failing = createFeatureSpecService(reader, async () => vaguePlan, undefined, {
+            label: "agent-assisted",
+            async addLabel() {
+                throw new Error("nope");
+            }
+        });
+        const failed = await failing({ issueKey: "PROJ-452", workspaceRoot: root }, new AbortController().signal);
+        assert.equal(failed.needsClarification, true);
+        assert.equal(failed.jiraLabelAdded, false);
     } finally {
         await rm(root, { recursive: true, force: true });
     }

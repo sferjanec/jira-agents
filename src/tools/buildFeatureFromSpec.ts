@@ -12,6 +12,7 @@ import {
     type FeatureBuilderModel
 } from "../agents/featureBuilder.js";
 import { FeatureBuilderFailure } from "../agents/featureBuilderFailure.js";
+import { RunRecorder } from "../metrics/runMetrics.js";
 
 const execFileAsync = promisify(execFile);
 const issueKeySchema = z.string().max(100).regex(/^[A-Z][A-Z0-9_]*-\d+$/);
@@ -54,7 +55,7 @@ function dirtyExceptPlan(status: string, issueKey: string): boolean {
         }
         const state = line.slice(0, 2);
         const path = line.slice(3);
-        return state !== "??" || path !== approvedPlanPath;
+        return state !== "??" || (path !== approvedPlanPath && !/^\.specs\/[A-Z][A-Z0-9_]*-\d+-CLARIFICATIONS\.md$/.test(path));
     });
 }
 
@@ -150,6 +151,26 @@ async function checkBeforeBranch(root: string, issueKey: string, originalPlan: s
 
 export function createFeatureBuildService(model: FeatureBuilderModel = copilotFeatureBuilderModel): FeatureBuildService {
     return async (rawInput, signal) => {
+        const keyForMetrics = typeof (rawInput as { issueKey?: unknown })?.issueKey === "string"
+            ? (rawInput as { issueKey: string }).issueKey.slice(0, 100)
+            : "unknown";
+        const run = new RunRecorder("build", keyForMetrics);
+        try {
+            const result = await runBuild(rawInput, signal, run);
+            run.set("filesCreated", result.created.length);
+            run.set("filesModified", result.modified.length);
+            run.set("filesSkipped", result.skipped.length);
+            run.succeed("branch_created");
+            return result;
+        } catch (error) {
+            run.fail(error);
+            throw error;
+        } finally {
+            await run.finish();
+        }
+    };
+
+    async function runBuild(rawInput: BuildFeatureInput, signal: AbortSignal, run: RunRecorder): Promise<BuildFeatureResult> {
         const parsedInput = buildInputSchema.safeParse(rawInput);
         if (!parsedInput.success) {
             throw new FeatureBuilderFailure("INVALID_INPUT");
@@ -177,7 +198,7 @@ export function createFeatureBuildService(model: FeatureBuilderModel = copilotFe
         await preflightGit(root, input.issueKey);
         const context = await gatherFeatureBuildContext(input.issueKey, root, approvedPlan.content);
         signal.throwIfAborted();
-        const output = await generateFeatureFiles(context, model, signal);
+        const output = await run.span("model", () => generateFeatureFiles(context, model, signal, run.telemetry));
         signal.throwIfAborted();
         await checkBeforeBranch(root, input.issueKey, approvedPlan.content);
         const branch = await createBranch(root, input.issueKey);
@@ -207,7 +228,7 @@ export function createFeatureBuildService(model: FeatureBuilderModel = copilotFe
             skipped: output.skipped,
             pushed: false
         };
-    };
+    }
 }
 
 export function registerBuildFeatureFromSpec(server: McpServer, service: FeatureBuildService) {

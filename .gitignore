@@ -5,3 +5,5 @@ coverage/
 .env.*
 !.env.example
 npm-debug.log*
+.keys
+.keys.*.metrics/

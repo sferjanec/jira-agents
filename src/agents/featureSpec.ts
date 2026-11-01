@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FeatureSpecFailure } from "./featureSpecFailure.js";
+import type { ModelTelemetry } from "../metrics/runMetrics.js";
 import type { RepoContext } from "./repoContext.js";
 
 export interface FeatureIssue {
@@ -27,7 +28,8 @@ export type FeatureSpecModel = (
     instructions: string,
     input: unknown,
     signal: AbortSignal,
-    workspaceRoot: string
+    workspaceRoot: string,
+    telemetry?: ModelTelemetry
 ) => Promise<string>;
 
 function isSafeRelativePath(filePath: string): boolean {
@@ -93,7 +95,8 @@ export async function createFeaturePlan(
     issue: FeatureIssue,
     repoContext: RepoContext,
     model: FeatureSpecModel,
-    signal: AbortSignal
+    signal: AbortSignal,
+    telemetry?: ModelTelemetry
 ): Promise<string> {
     const instructions = [
         "You are a software architect creating a reviewable implementation plan for an existing repository.",
@@ -118,7 +121,7 @@ export async function createFeaturePlan(
 
     let response: string;
     try {
-        response = await model(instructions, input, signal, repoContext.workspaceRoot);
+        response = await model(instructions, input, signal, repoContext.workspaceRoot, telemetry);
     } catch (error) {
         if (signal.aborted) {
             throw error;

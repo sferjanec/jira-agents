@@ -1,0 +1,18 @@
+Rename Rejected tab to Declined on the Manager page
+Change the visible label "Rejected" to "Declined" on the Manager page.
+
+Location:
+Application: Manager UI
+Page: Manager (/manager)
+Repository: mock-manager-ui
+
+Current behavior:
+The Manager page shows a tab labelled "Rejected" (tab key "rejected", status REJECTED).
+
+Expected behavior:
+The same tab is labelled "Declined". The tab key, the status it filters on and the other tabs stay unchanged.
+
+Acceptance Criteria:
+1. The Manager page shows a "Declined" tab instead of "Rejected".
+2. The tab still lists the same items (status REJECTED).
+3. Tests that assert the old label are updated to the new one.

@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { jiraEnvironment } from "./config/jiraEnvironment.js";
 const issueKey = process.argv[2] ?? "PROJ-123";
+const details = process.argv.includes("--details") || process.argv.includes("-d");
 const compactOnly = process.argv.includes("--compact") || process.argv.includes("-c");
 const client = new Client({
     name: "jira-mcp-example-get-jira-issue",
@@ -30,7 +31,7 @@ async function main() {
     await client.connect(transport);
     const result = await client.callTool({
         name: "get_jira_issue",
-        arguments: { issueKey, includeFull: false }
+        arguments: { issueKey, includeFull: false, includeDetails: details }
     });
     const payload = parseToolText(result);
     if (compactOnly) {

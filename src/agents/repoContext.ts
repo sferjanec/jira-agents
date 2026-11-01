@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, readdir, realpath, link, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, link, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { FeatureSpecFailure } from "./featureSpecFailure.js";
@@ -192,5 +192,55 @@ export async function saveFeatureSpec(
                 throw new FeatureSpecFailure("SPEC_SAVE_FAILED");
             }
         }
+    }
+}
+
+async function specsDirectory(workspaceRoot: string, issueKey: string): Promise<string> {
+    if (!isAbsolute(workspaceRoot) || !/^[A-Z][A-Z0-9_]*-\d+$/.test(issueKey)) {
+        throw new FeatureSpecFailure("INVALID_WORKSPACE");
+    }
+    const root = await realpath(workspaceRoot);
+    const directory = join(workspaceRoot, ".specs");
+    await mkdir(directory, { recursive: true });
+    const info = await lstat(directory);
+    const actual = await realpath(directory);
+    if (!info.isDirectory() || info.isSymbolicLink() || actual !== join(root, ".specs") || !isInside(root, actual)) {
+        throw new FeatureSpecFailure("WORKSPACE_ACCESS_FAILED");
+    }
+    return directory;
+}
+
+// Unlike the plan, the clarification file is replaced on every run so it always reflects the latest questions.
+export async function saveClarifications(workspaceRoot: string, issueKey: string, content: string): Promise<string> {
+    const temporaryName = `.${issueKey}-${randomUUID()}.tmp`;
+    try {
+        const directory = await specsDirectory(workspaceRoot, issueKey);
+        const outputPath = join(directory, `${issueKey}-CLARIFICATIONS.md`);
+        const temporaryPath = join(directory, temporaryName);
+        const file = await open(temporaryPath, "wx", 0o600);
+        try {
+            await file.writeFile(content, "utf8");
+        } finally {
+            await file.close();
+        }
+        await rename(temporaryPath, outputPath);
+        return outputPath;
+    } catch (error) {
+        if (error instanceof FeatureSpecFailure) {
+            throw error;
+        }
+        throw new FeatureSpecFailure("SPEC_SAVE_FAILED");
+    }
+}
+
+export async function removeClarifications(workspaceRoot: string, issueKey: string): Promise<void> {
+    try {
+        const directory = await specsDirectory(workspaceRoot, issueKey);
+        await unlink(join(directory, `${issueKey}-CLARIFICATIONS.md`));
+    } catch (error) {
+        if (error instanceof FeatureSpecFailure || isErrno(error, "ENOENT")) {
+            return;
+        }
+        throw new FeatureSpecFailure("SPEC_SAVE_FAILED");
     }
 }
