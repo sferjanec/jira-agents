@@ -89,6 +89,10 @@ apply, independently of the VS Code Chat model picker.
 
 | Build from an approved plan with an agent that calls the MCP tools itself | `npm run build:agent -- SIM-101 /absolute/path/to/repository` |
 
+| Plan with a script that calls the MCP tools in code (hybrid) | `npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate` |
+
+| Build with a script that calls the MCP tools in code (hybrid) | `npm run build:hybrid -- SIM-101 /absolute/path/to/repository` |
+
 `npm start` is a JSON-RPC stdio server, not an interactive command prompt or HTTP
 
 endpoint. The example clients start and close their own server process; there is
@@ -158,6 +162,9 @@ Fine-grained tools for the agent-driven plan and build flow (called by an agent,
 | `create_build_branch` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path"}` | Requires a clean worktree except the plan; creates local branch `agent/proj-452-builder`; never pushes. |
 
 | `write_planned_file` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path","path":"src/a.ts","content":"..."}` | Writes one file listed in the approved plan, only on the build branch. |
+| `post_clarification_comment` | `{"issueKey":"PROJ-452","questions":["..."]}` | Posts the questions as a Jira comment. Needs `JIRA_POST_CLARIFICATIONS=true`; never contacts Jira in fixture mode. |
+| `post_completion_comment` | `{"issueKey":"PROJ-452","stage":"build","branch":"agent/proj-452-builder","files":["src/a.ts"],"skipped":[]}` | Posts a plan or build summary. Needs `JIRA_POST_COMPLETION=true`; never contacts Jira in fixture mode. |
+| `add_agent_label` | `{"issueKey":"PROJ-452"}` | Adds the label in `JIRA_AGENT_LABEL`. Skipped when unset or in fixture mode. |
 
 The agent-driven path does not yet post the Jira clarification comment or label, record run metrics, or apply the single-flight guard. See [feature-workflow-detailed.md](feature-workflow-detailed.md).
 

@@ -8,7 +8,7 @@ see the [quick reference](quick-reference.md).
 
 ## What it does
 
-The server currently exposes twelve tools:
+The server currently exposes fifteen tools:
 
 - `get_jira_issue` — fetch one Jira issue by key like `PROJ-123` (`includeDetails` adds the description and recent comments)
 - `search_jira` — search Jira using JQL such as `project = PROJ ORDER BY priority DESC`
@@ -27,6 +27,13 @@ calls them itself instead of the server orchestrating the model (see
 - `read_approved_plan` — return the approved plan and the current contents of the files it lists (read-only)
 - `create_build_branch` — create the local branch `agent/{issue-key}-builder` from a clean worktree; never pushes
 - `write_planned_file` — write one plan-listed file on that branch
+
+Three more post to Jira. Each is off unless its flag is set, and none contacts Jira when
+`JIRA_FIXTURES_DIR` is set:
+
+- `post_clarification_comment` — post clarification questions as a comment (`JIRA_POST_CLARIFICATIONS=true`)
+- `post_completion_comment` — post a plan or build summary comment (`JIRA_POST_COMPLETION=true`)
+- `add_agent_label` — add the label named in `JIRA_AGENT_LABEL`
 
 ### Jira feature plan generation
 
@@ -114,8 +121,23 @@ npm run build:agent -- SIM-101 /absolute/path/to/repository            # after a
 - **`--simulate`** sets `JIRA_FIXTURES_DIR` for the server so `get_jira_issue` reads
   `simulation/fixtures/KEY.txt` and Jira is never contacted. You can set that variable
   yourself to run the server offline.
-- **Not yet in this path:** the Jira clarification comment and label, run metrics, and the
+- **Not yet in this path:** the Jira comments and label, run metrics, and the
   single-flight guard. Prompt-injection hardening is also deferred.
+- Each script prints a `[tokens]` line with model calls and token counts.
+
+**Hybrid variant.** The script itself is the MCP client and calls the tools in a fixed
+order, using the model only for reasoning (no MCP tools in the model session). It also
+posts the Jira comment and label through the Jira write tools:
+
+```bash
+npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate
+npm run build:hybrid -- SIM-101 /absolute/path/to/repository
+```
+
+On SIM-101 it used about 87% fewer input tokens when planning and about 94% fewer when
+building than the model-led scripts (single runs; see the table in
+[feature-workflow-detailed.md](feature-workflow-detailed.md)). The hybrid scripts pass
+`JIRA_POST_CLARIFICATIONS`, `JIRA_POST_COMPLETION` and `JIRA_AGENT_LABEL` to the server.
 
 See [feature-workflow-detailed.md](feature-workflow-detailed.md) for diagrams and a tool reference.
 

@@ -224,17 +224,124 @@ Both scripts allow only these MCP tools in `onPermissionRequest`, and the SDK na
 
 ## Both patterns side by side
 
-|                                            | Server-orchestrated (original)                                                   | Agent-driven (implemented)                         |
-| ------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Plan entry points                          | MCP `create_feature_spec`, `npm run plan:jira`, `npm run simulate -- plan` | `npm run plan:agent`                             |
-| Build entry points                         | MCP `build_feature_from_spec`, `npm run simulate -- build`                   | `npm run build:agent`                            |
-| Who calls `get_jira_issue`               | Nobody; server code reads Jira directly                                          | The planner agent                                  |
-| Who decides call order                     | TypeScript in the tool handler                                                   | The agent, guided by its prompt                    |
-| Agent output                               | JSON the server validates                                                        | Tool calls the server validates one at a time      |
-| Single-flight guard, timeouts, run metrics | In the tool handlers                                                             | Overall timeout in the script only; no metrics yet |
-| Jira clarification comment and label       | Supported (env flags)                                                            | Not supported yet                                  |
+|                                            | Server-orchestrated (original)                                                   | Model-led (`*:agent`)                              | Hybrid (`*:hybrid`)                                  |
+| ------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| Plan entry points                          | MCP `create_feature_spec`, `npm run plan:jira`, `npm run simulate -- plan` | `npm run plan:agent`                             | `npm run plan:hybrid`                              |
+| Build entry points                         | MCP `build_feature_from_spec`, `npm run simulate -- build`                   | `npm run build:agent`                            | `npm run build:hybrid`                             |
+| Who calls `get_jira_issue`               | Nobody; server code reads Jira directly                                          | The planner agent (model decides)                  | The script, in code, over MCP                        |
+| Who decides call order                     | TypeScript in the tool handler                                                   | The model, guided by its prompt                    | The script                                           |
+| Model sees MCP tools                       | No                                                                               | Yes                                                | No (planner keeps read-only view/grep/glob)          |
+| Model output                               | JSON the server validates                                                        | Tool calls the server validates one at a time      | JSON the script validates, then saves via tools      |
+| Single-flight guard, timeouts, run metrics | In the tool handlers                                                             | Overall timeout in the script only                 | Overall timeout in the script only                   |
+| Jira clarification comment, completion comment, label | Supported (env flags)                                                 | Not supported                                      | Supported through MCP tools (env flags)              |
+| Token usage printed                        | Run metrics (`METRICS_FILE`)                                                     | `[tokens]` line                                    | `[tokens]` line                                      |
 
 The original tools `create_feature_spec` and `build_feature_from_spec` are unchanged and still available.
+
+---
+
+# Hybrid pattern (implemented)
+
+A script is the MCP client and runs the fixed steps in code. It calls the server's tools for Jira and repository I/O, uses the model only for reasoning, and calls the server again to save results. The model never sees MCP tools, so the call order is deterministic and the ticket and repo data go into the prompt once instead of through repeated tool round trips. The script connects with `connectJiraMcp` in `src/mcpScriptSupport.ts`.
+
+| Script                         | Command                                                           | MCP tools the script calls                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/example-plan-hybrid.ts`  | `npm run plan:hybrid -- <KEY> <absolute-repo-path> [--simulate]` | `get_jira_issue`, `get_repo_context`, `save_feature_plan`, then `post_clarification_comment` or `post_completion_comment`, and `add_agent_label` |
+| `src/example-build-hybrid.ts` | `npm run build:hybrid -- <KEY> <absolute-repo-path>`            | `read_approved_plan`, `create_build_branch`, `write_planned_file` per file, `post_completion_comment`                            |
+
+## Hybrid plan flow
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant Script as Script<br/>(npm run plan:hybrid)
+    participant MCP as MCP server<br/>(jira-mcp, subprocess)
+    participant Model as Planner model<br/>(Copilot SDK session)
+    participant Jira as Jira (or fixture file)
+    participant Repo as Local git repo
+
+    Dev->>Script: npm run plan:hybrid -- KEY-123 /repo
+    Script->>MCP: Start server over stdio
+    Script->>MCP: MCP tool call: get_jira_issue(KEY-123, includeDetails)
+    MCP->>Jira: GET issue (read-only)
+    MCP-->>Script: Issue (untrusted data)
+    Script->>MCP: MCP tool call: get_repo_context(workspaceRoot)
+    MCP->>Repo: Read bounded layout and instruction files
+    MCP-->>Script: Layout, stack, instructions
+    Script->>Model: One prompt with ticket and repo context (no MCP tools)
+    loop Model explores the repo
+        Model->>Repo: Built-in view / grep / glob (read policy enforced)
+    end
+    Model-->>Script: Plan as JSON
+    Script->>Script: Validate plan, retry once if invalid
+    Script->>MCP: MCP tool call: save_feature_plan(issueKey, summary, workspaceRoot, plan)
+    MCP->>Repo: Write .specs/KEY-TASK.md, or KEY-CLARIFICATIONS.md
+    MCP-->>Script: Saved path or needsClarification
+    alt Needs clarification
+        Script->>MCP: MCP tool call: post_clarification_comment
+    else Plan saved
+        Script->>MCP: MCP tool call: post_completion_comment(stage plan)
+    end
+    MCP->>Jira: Add comment (only if enabled and not simulating)
+    Script->>MCP: MCP tool call: add_agent_label
+    MCP->>Jira: Add label (only if JIRA_AGENT_LABEL is set)
+    Script-->>Dev: Result and token summary
+```
+
+## Hybrid build flow
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant Script as Script<br/>(npm run build:hybrid)
+    participant MCP as MCP server<br/>(jira-mcp, subprocess)
+    participant Model as Builder model<br/>(Copilot SDK session, no tools)
+    participant Jira as Jira
+    participant Repo as Local git repo
+
+    Dev->>Script: npm run build:hybrid -- KEY-123 /repo
+    Script->>MCP: MCP tool call: read_approved_plan(issueKey, workspaceRoot)
+    MCP->>Repo: Read .specs/KEY-TASK.md, planned files, examples
+    MCP-->>Script: Plan, current file contents, instructions
+    Script->>Model: One prompt with plan and file contents
+    Model-->>Script: Files as JSON
+    Script->>Script: Validate every path against the plan
+    Script->>MCP: MCP tool call: create_build_branch(issueKey, workspaceRoot)
+    MCP->>Repo: Preflight, git switch -c agent/key-builder
+    MCP-->>Script: Branch name
+    loop For each file
+        Script->>MCP: MCP tool call: write_planned_file(issueKey, workspaceRoot, path, content)
+        MCP->>Repo: Write file (temp and rename)
+    end
+    Script->>MCP: MCP tool call: post_completion_comment(stage build, branch, files, skipped)
+    MCP->>Jira: Add comment (only if enabled and not simulating)
+    Script-->>Dev: Branch, files, token summary
+```
+
+## Jira write tools
+
+All three are off unless enabled, never contact Jira when `JIRA_FIXTURES_DIR` is set, and return a generic error with no details on failure. They return `{posted: false, reason}` when skipped.
+
+| Tool                         | Enabled by                                 | Responsibility                                                               |
+| ---------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `post_clarification_comment` | `JIRA_POST_CLARIFICATIONS=true`            | Post the clarification questions as one comment                              |
+| `post_completion_comment`    | `JIRA_POST_COMPLETION=true`                | Post a plan or build summary (`stage`; build adds branch, files, skipped)    |
+| `add_agent_label`            | `JIRA_AGENT_LABEL` set to a valid label    | Add the label to the ticket                                                  |
+
+The hybrid scripts pass these three variables from their own environment to the server subprocess.
+
+## Measured token comparison (SIM-101, one run each)
+
+Same fixture ticket, same repo (`mock-manager-ui`) and same model (`claude-sonnet-5.5`). Single runs, so indicative rather than a benchmark. The plan and build content also differed between runs.
+
+| Stage | Path       | Model calls | Input tokens | Output tokens |
+| ----- | ---------- | ----------- | ------------ | ------------- |
+| Plan  | Hybrid     | 3           | 10,690       | 1,325         |
+| Plan  | Model-led  | 5           | 81,854       | 1,836         |
+| Build | Hybrid     | 1           | 4,403        | 1,714         |
+| Build | Model-led  | 4           | 76,610       | 2,641         |
+
+Hybrid used about 87% fewer input tokens when planning and about 94% fewer when building. In the model-led path every tool call resends the growing conversation, while the hybrid path fetches data in code and sends it once.
 
 ## Testing without Jira
 
@@ -245,5 +352,6 @@ The original tools `create_feature_spec` and `build_feature_from_spec` are uncha
 - **Security moves into the tools.** The agent holds ticket text (untrusted) and write-capable tools in one session, so a prompt-injected ticket could try to steer tool calls. Today each tool enforces its own limits (plan-listed paths only, branch check, no overwrite, read policy). Stronger controls such as injection detection and per-run approval are deferred until beyond the demo.
 - **Less deterministic.** The agent chooses the call order, so runs vary. Tool errors are written so the agent can recover.
 - **Prompt-dependent.** Correct order relies on the agent prompts in the two scripts.
-- **Not yet ported:** the Jira clarification comment and label, run metrics, and the single-flight guard.
+- **Not yet ported to either script pattern:** run metrics (`METRICS_FILE`) and the single-flight guard. The hybrid path covers the Jira comment and label through the new tools.
+- **Hybrid trade-off.** The hybrid path is more deterministic and cheaper (see the token table), but the script, not the agent, owns the workflow. Agents that want to drive the tools themselves still can, as in the model-led pattern.
 - **Reuse.** Other scripts and agents can mix these tools freely, which is the main benefit.

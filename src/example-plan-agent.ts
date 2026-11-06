@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { CopilotClient, ToolSet } from "@github/copilot-sdk";
+import { applyUsageEvent, newTelemetry } from "./metrics/runMetrics.js";
+import { formatTelemetry } from "./mcpScriptSupport.js";
 import { checkRead, ReadBudget } from "./agents/readPolicy.js";
 
 // Agent-driven planning: this script starts the jira-mcp server as a subprocess and gives a
@@ -71,7 +73,9 @@ await using session = await client.createSession({
     systemMessage: { mode: "replace", content: instructions }
 });
 
+const telemetry = newTelemetry();
 session.on((event) => {
+    applyUsageEvent(telemetry, event);
     if (event.type === "tool.execution_start") {
         const data = event.data as { toolName?: string; mcpToolName?: string; mcpServerName?: string };
         const label = data.mcpServerName ? `MCP ${data.mcpServerName}/${data.mcpToolName ?? data.toolName}` : `built-in ${data.toolName}`;
@@ -83,3 +87,4 @@ const response = await session.sendAndWait({
     prompt: JSON.stringify({ issueKey, workspaceRoot })
 }, timeoutMs);
 console.log(response?.data.content.trim() || "No response from the agent.");
+console.log(`[tokens] ${formatTelemetry(telemetry)}`);
