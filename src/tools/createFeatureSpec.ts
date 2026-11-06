@@ -52,7 +52,7 @@ export function renderClarifications(issueKey: string, summary: string, question
     ].join("\n");
 }
 
-function clarificationComment(questions: string[]) {
+export function clarificationComment(questions: string[]) {
     const paragraph = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
     return {
         type: "doc",

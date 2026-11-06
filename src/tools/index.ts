@@ -5,6 +5,7 @@ import { registerTriageTools } from "./triage.js";
 import { jiraCommenter, jiraLabeler, triageReader } from "../jira/jiraService.js";
 import { copilotAuditService, registerAuditJiraDuplicates } from "./auditJiraDuplicates.js";
 import { registerFeatureBuildTools } from "./featureBuildTools.js";
+import { registerJiraWriteTools } from "./jiraWriteTools.js";
 import { registerFeaturePlanTools } from "./featurePlanTools.js";
 import { createFeatureSpecService, registerCreateFeatureSpec } from "./createFeatureSpec.js";
 import { createFeatureBuildService, registerBuildFeatureFromSpec } from "./buildFeatureFromSpec.js";
@@ -19,4 +20,5 @@ export function registerJiraTools(server: McpServer) {
     registerBuildFeatureFromSpec(server, createFeatureBuildService());
     registerFeaturePlanTools(server);
     registerFeatureBuildTools(server);
+    registerJiraWriteTools(server);
 }

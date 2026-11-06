@@ -23,7 +23,7 @@ const featurePlanSchema = z.strictObject({
     openQuestions: z.array(z.string().trim().min(1).max(500)).max(12)
 });
 
-type FeaturePlan = z.infer<typeof featurePlanSchema>;
+export type FeaturePlan = z.infer<typeof featurePlanSchema>;
 export type FeatureSpecModel = (
     instructions: string,
     input: unknown,
@@ -98,6 +98,18 @@ export async function createFeaturePlan(
     signal: AbortSignal,
     telemetry?: ModelTelemetry
 ): Promise<string> {
+    return renderPlan(issue, await generateFeaturePlan(issue, repoContext, model, signal, telemetry));
+}
+
+// Asks the model for the plan and returns it validated but unrendered, so a caller that saves
+// through the save_feature_plan MCP tool can pass the object straight to the server.
+export async function generateFeaturePlan(
+    issue: FeatureIssue,
+    repoContext: RepoContext,
+    model: FeatureSpecModel,
+    signal: AbortSignal,
+    telemetry?: ModelTelemetry
+): Promise<FeaturePlan> {
     const instructions = [
         "You are a software architect creating a reviewable implementation plan for an existing repository.",
         "Return only a JSON object matching the provided schema. Do not use Markdown fences.",
@@ -138,18 +150,22 @@ export async function createFeaturePlan(
     } catch {
         throw new FeatureSpecFailure("MODEL_OUTPUT_INVALID");
     }
-    return validateAndRenderPlan(issue, parsed);
+    return validatePlan(parsed);
 }
 
-// Shared by the planner service and the save_feature_plan MCP tool so both enforce the same contract.
-export function validateAndRenderPlan(issue: FeatureIssue, candidate: unknown): string {
+function validatePlan(candidate: unknown): FeaturePlan {
     const result = featurePlanSchema.safeParse(candidate);
     if (!result.success || result.data.implementationSteps.some(
         (step) => step.files.some((file) => !isSafeRelativePath(file))
     )) {
         throw new FeatureSpecFailure("MODEL_OUTPUT_INVALID");
     }
-    return renderPlan(issue, result.data);
+    return result.data;
+}
+
+// Shared by the planner service and the save_feature_plan MCP tool so both enforce the same contract.
+export function validateAndRenderPlan(issue: FeatureIssue, candidate: unknown): string {
+    return renderPlan(issue, validatePlan(candidate));
 }
 
 export const featurePlanInputSchema = featurePlanSchema;
