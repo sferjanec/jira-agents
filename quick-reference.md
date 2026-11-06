@@ -91,6 +91,8 @@ apply, independently of the VS Code Chat model picker.
 
 | Plan with a script that calls the MCP tools in code (hybrid) | `npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate` |
 
+| Plan and then build in one run, skipping plan review (hybrid, demo use) | `npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate --auto-build` |
+
 | Build with a script that calls the MCP tools in code (hybrid) | `npm run build:hybrid -- SIM-101 /absolute/path/to/repository` |
 
 `npm start` is a JSON-RPC stdio server, not an interactive command prompt or HTTP

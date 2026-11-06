@@ -249,6 +249,8 @@ A script is the MCP client and runs the fixed steps in code. It calls the server
 | `src/example-plan-hybrid.ts`  | `npm run plan:hybrid -- <KEY> <absolute-repo-path> [--simulate]` | `get_jira_issue`, `get_repo_context`, `save_feature_plan`, then `post_clarification_comment` or `post_completion_comment`, and `add_agent_label` |
 | `src/example-build-hybrid.ts` | `npm run build:hybrid -- <KEY> <absolute-repo-path>`            | `read_approved_plan`, `create_build_branch`, `write_planned_file` per file, `post_completion_comment`                            |
 
+`npm run plan:hybrid ... --auto-build` skips the human approval gate: after `save_feature_plan` succeeds, the same script runs the hybrid build flow below in the same MCP session (no second command). It does not build when the plan needs clarification. Use it only for demos or low-risk repositories, because nobody reviews the plan before files are written (to a new local branch, never pushed). The shared build code is `src/hybridBuild.ts`.
+
 ## Hybrid plan flow
 
 ```mermaid

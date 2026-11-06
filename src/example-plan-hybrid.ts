@@ -4,16 +4,21 @@ import { copilotFeatureSpecModel } from "./agents/copilotFeatureSpec.js";
 import type { RepoContext } from "./agents/repoContext.js";
 import { newTelemetry } from "./metrics/runMetrics.js";
 import { connectJiraMcp, formatTelemetry } from "./mcpScriptSupport.js";
+import { formatBuildResult, runHybridBuild } from "./hybridBuild.js";
 
 // Hybrid planning: this script is an MCP client and runs the fixed steps in code. It calls the
 // server's tools for Jira and the repository, uses the model only to reason about the plan
 // (read-only view/grep/glob, no MCP tools), then calls the server again to save the plan and
 // update the ticket. Compare with `npm run plan:agent`, where the model chooses the tool calls.
 // With --simulate, tickets come from simulation/fixtures and Jira is never contacted.
+// With --auto-build, the script continues straight into the build step when a plan was saved,
+// skipping the human review of the plan. Use it only for demos or low-risk repositories.
+const flags = new Set(["--simulate", "--auto-build"]);
 const simulate = process.argv.includes("--simulate");
-const [issueKey, workspaceRoot] = process.argv.slice(2).filter((arg) => arg !== "--simulate");
+const autoBuild = process.argv.includes("--auto-build");
+const [issueKey, workspaceRoot] = process.argv.slice(2).filter((arg) => !flags.has(arg));
 if (!issueKey || !workspaceRoot) {
-    console.error("Usage: npm run plan:hybrid -- <ISSUE-KEY> <absolute-repo-path> [--simulate]");
+    console.error("Usage: npm run plan:hybrid -- <ISSUE-KEY> <absolute-repo-path> [--simulate] [--auto-build]");
     process.exit(2);
 }
 
@@ -56,6 +61,13 @@ try {
     }
     const label = await mcp.call<{ posted: boolean; reason?: string }>("add_agent_label", { issueKey });
     console.log(`Jira label added: ${label.posted}${label.reason ? ` (${label.reason})` : ""}`);
+    if (autoBuild && !saved.needsClarification) {
+        console.log("[auto-build] Plan review skipped, building from the saved plan");
+        const result = await runHybridBuild(mcp, issueKey, workspaceRoot, telemetry, AbortSignal.timeout(360000));
+        console.log(formatBuildResult(result));
+    } else if (autoBuild) {
+        console.log("[auto-build] Not building: the plan needs clarification first");
+    }
     console.log(`[tokens] ${formatTelemetry(telemetry)}`);
 } finally {
     await mcp.close();

@@ -132,6 +132,7 @@ posts the Jira comment and label through the Jira write tools:
 ```bash
 npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate
 npm run build:hybrid -- SIM-101 /absolute/path/to/repository
+npm run plan:hybrid -- SIM-101 /absolute/path/to/repository --simulate --auto-build  # plan, then build, no review
 ```
 
 On SIM-101 it used about 87% fewer input tokens when planning and about 94% fewer when
