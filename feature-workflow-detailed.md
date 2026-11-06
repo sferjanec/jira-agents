@@ -4,15 +4,15 @@ Companion to the high-level flow in [feature-workflow.md](./feature-workflow.md)
 
 ## Legend
 
-| Actor         | What it is                                                                                               |
-| ------------- | -------------------------------------------------------------------------------------------------------- |
-| Developer     | Human in VS Code                                                                                         |
-| Chat agent    | VS Code Copilot chat (MCP client). Only calls the two MCP tools when the developer asks                  |
+| Actor                | What it is                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Developer            | Human in VS Code                                                                                                            |
+| Chat agent           | VS Code Copilot chat (MCP client). Only calls the two MCP tools when the developer asks                                     |
 | `plan:jira` script | `npm run plan:jira -- <KEY> <repo>` runs `src/example-plan-jira.ts`. Calls the planner service in-process, not over MCP |
-| MCP server    | TypeScript server `jira-mcp`. Runs deterministic code, hosts the tools, orchestrates agents            |
-| Planner agent | Copilot SDK session started by `create_feature_spec`. Built-in tools `view`, `grep`, `glob` only |
-| Builder agent | Copilot SDK session started by `build_feature_from_spec`. No tools, JSON in / JSON out                 |
-| Jira / Repo   | Jira REST API (read-only, optional comment/label) and the local git repository                           |
+| MCP server           | TypeScript server `jira-mcp`. Runs deterministic code, hosts the tools, orchestrates agents                               |
+| Planner agent        | Copilot SDK session started by `create_feature_spec`. Built-in tools `view`, `grep`, `glob` only                    |
+| Builder agent        | Copilot SDK session started by `build_feature_from_spec`. No tools, JSON in / JSON out                                    |
+| Jira / Repo          | Jira REST API (read-only, optional comment/label) and the local git repository                                              |
 
 In the server-orchestrated pattern, planner and builder agents never call MCP tools themselves; the MCP server calls them. In the agent-driven pattern the agents call the MCP tools directly.
 
@@ -20,13 +20,13 @@ In the server-orchestrated pattern, planner and builder agents never call MCP to
 
 A common mental model is: a script starts the MCP server, starts a first agent, and that agent calls tools such as `get_jira_issue` on the server. **The workflow supports both that agent-driven pattern and the original server-orchestrated one.** The tables and the first diagram below describe the original, server-orchestrated pattern (`create_feature_spec`, `build_feature_from_spec`). The agent-driven pattern is described in [Agent-driven pattern (implemented)](#agent-driven-pattern-implemented).
 
-|                                     | Agent-driven (not used here)             | Server-orchestrated (used here)                                      |
-| ----------------------------------- | ---------------------------------------- | -------------------------------------------------------------------- |
+|                                     | Agent-driven (not used here)             | Server-orchestrated (used here)                                                                                                |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Entry point                         | Script launches server, then an agent    | Either the chat agent making one MCP tool call, or `npm run plan:jira` calling the same service function in-process (no MCP) |
-| Who fetches Jira data               | The agent, by calling `get_jira_issue` | The MCP server's TypeScript code, directly                           |
-| Who decides the next step           | The agent (LLM)                          | Deterministic TypeScript in the tool handler                         |
-| Copilot SDK agents                  | Call MCP tools                           | Are started by the server, are given prepared input, and return JSON |
-| MCP tools available to those agents | Yes                                      | None                                                                 |
+| Who fetches Jira data               | The agent, by calling `get_jira_issue` | The MCP server's TypeScript code, directly                                                                                     |
+| Who decides the next step           | The agent (LLM)                          | Deterministic TypeScript in the tool handler                                                                                   |
+| Copilot SDK agents                  | Call MCP tools                           | Are started by the server, are given prepared input, and return JSON                                                           |
+| MCP tools available to those agents | Yes                                      | None                                                                                                                           |
 
 Why: the Jira ticket is untrusted text. Keeping Jira access, git, file writes and validation in code means the LLM can only produce a proposal (plan JSON or file contents). The server validates that proposal before anything is saved or written. The planner's only reach is read-only `view`/`grep`/`glob` on the repo. The builder has no tools.
 
@@ -36,10 +36,10 @@ Why: the Jira ticket is untrusted text. Keeping Jira access, git, file writes an
 
 `create_feature_spec` and `npm run plan:jira` share the same service, `createFeatureSpecService` in `src/tools/createFeatureSpec.ts`. Only the way it is invoked differs.
 
-| Entry point | Command | Path to the planner |
-| --- | --- | --- |
-| Chat agent (MCP) | Developer asks in VS Code chat | Chat agent -> MCP `create_feature_spec` -> service -> planner agent |
-| Script | `npm run plan:jira -- <ISSUE-KEY> <absolute-repo-path>` | `src/example-plan-jira.ts` -> service -> planner agent. The MCP server is not started and no MCP call is made |
+| Entry point      | Command                                                   | Path to the planner                                                                                             |
+| ---------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Chat agent (MCP) | Developer asks in VS Code chat                            | Chat agent -> MCP `create_feature_spec` -> service -> planner agent                                           |
+| Script           | `npm run plan:jira -- <ISSUE-KEY> <absolute-repo-path>` | `src/example-plan-jira.ts` -> service -> planner agent. The MCP server is not started and no MCP call is made |
 
 The diagram below shows the chat-agent path. For the script path, replace "Chat agent" and the MCP tool call with the script calling the service directly; everything from "GET issue" onward is identical.
 
@@ -132,10 +132,10 @@ Other MCP tools (`search_jira`, `get_jira_issue`, `audit_jira_duplicates`, `fetc
 
 The MCP server also exposes the workflow as small, composable tools. A script starts the server as a subprocess and gives a Copilot SDK agent session access to those tools through `mcpServers`. The agent itself decides when to call each tool. This makes the server a toolbox that any script or agent can reuse, instead of a black box that runs its own agents.
 
-| Script | Command | Agent's MCP tools |
-| --- | --- | --- |
-| `src/example-plan-agent.ts` | `npm run plan:agent -- <KEY> <absolute-repo-path> [--simulate]` | `get_jira_issue`, `get_repo_context`, `save_feature_plan` |
-| `src/example-build-agent.ts` | `npm run build:agent -- <KEY> <absolute-repo-path>` | `read_approved_plan`, `create_build_branch`, `write_planned_file` |
+| Script                         | Command                                                           | Agent's MCP tools                                                       |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `src/example-plan-agent.ts`  | `npm run plan:agent -- <KEY> <absolute-repo-path> [--simulate]` | `get_jira_issue`, `get_repo_context`, `save_feature_plan`         |
+| `src/example-build-agent.ts` | `npm run build:agent -- <KEY> <absolute-repo-path>`             | `read_approved_plan`, `create_build_branch`, `write_planned_file` |
 
 The planner agent also keeps the SDK built-ins `view`, `grep` and `glob` (read policy and read budget enforced) for repo exploration. The builder agent has no built-in tools.
 
@@ -171,7 +171,7 @@ sequenceDiagram
         MCP->>Repo: Write .specs/KEY-CLARIFICATIONS.md, no plan
         MCP-->>Agent: needsClarification + questions
     else Validation error
-        MCP-->>Agent: Error code; agent fixes the plan and retries
+        MCP-->>Agent: Error code, agent fixes the plan and retries
     end
     Agent-->>Script: One-line result
     Script-->>Dev: Tool trace and result
@@ -201,7 +201,7 @@ sequenceDiagram
     MCP-->>Agent: Branch name
     loop For each planned file
         Agent->>MCP: MCP tool call: write_planned_file(issueKey, workspaceRoot, path, content)
-        MCP->>MCP: Path must be listed in the plan and safe;<br/>current branch must be agent/key-builder
+        MCP->>MCP: Path must be listed in the plan and safe,<br/>current branch must be agent/key-builder
         MCP->>Repo: Write file (temp + rename)
         MCP-->>Agent: created / modified, or error
     end
@@ -211,28 +211,28 @@ sequenceDiagram
 
 ## Tool reference
 
-| Tool | Used by | Responsibility | Guardrails enforced inside the tool |
-| --- | --- | --- | --- |
-| `get_jira_issue` | Planner | Fetch one issue (`includeDetails` adds description and comments) | Read-only; with `JIRA_FIXTURES_DIR` set, reads local fixture files instead of Jira |
-| `get_repo_context` | Planner | Bounded layout, stack and instruction files | Size limits, read-only |
-| `save_feature_plan` | Planner | Validate, render and save the plan, or save clarifications | Zod plan schema, safe relative paths, no overwrite, writes only under `.specs/` |
-| `read_approved_plan` | Builder | Return the approved plan, current contents of planned files, examples | Read-only; plan must be a valid saved plan; size limits |
-| `create_build_branch` | Builder | Create `agent/{key}-builder` | Clean tree (except the plan), branch must not exist, never pushes |
-| `write_planned_file` | Builder | Write one planned file | Path must be listed in the approved plan, safe path rules, must be on the build branch, atomic write |
+| Tool                    | Used by | Responsibility                                                        | Guardrails enforced inside the tool                                                                  |
+| ----------------------- | ------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `get_jira_issue`      | Planner | Fetch one issue (`includeDetails` adds description and comments)    | Read-only; with `JIRA_FIXTURES_DIR` set, reads local fixture files instead of Jira                 |
+| `get_repo_context`    | Planner | Bounded layout, stack and instruction files                           | Size limits, read-only                                                                               |
+| `save_feature_plan`   | Planner | Validate, render and save the plan, or save clarifications            | Zod plan schema, safe relative paths, no overwrite, writes only under `.specs/`                    |
+| `read_approved_plan`  | Builder | Return the approved plan, current contents of planned files, examples | Read-only; plan must be a valid saved plan; size limits                                              |
+| `create_build_branch` | Builder | Create `agent/{key}-builder`                                        | Clean tree (except the plan), branch must not exist, never pushes                                    |
+| `write_planned_file`  | Builder | Write one planned file                                                | Path must be listed in the approved plan, safe path rules, must be on the build branch, atomic write |
 
 Both scripts allow only these MCP tools in `onPermissionRequest`, and the SDK names them with the server prefix (for example `jira-mcp-write_planned_file`), so the allow-list accepts both forms.
 
 ## Both patterns side by side
 
-| | Server-orchestrated (original) | Agent-driven (implemented) |
-| --- | --- | --- |
-| Plan entry points | MCP `create_feature_spec`, `npm run plan:jira`, `npm run simulate -- plan` | `npm run plan:agent` |
-| Build entry points | MCP `build_feature_from_spec`, `npm run simulate -- build` | `npm run build:agent` |
-| Who calls `get_jira_issue` | Nobody; server code reads Jira directly | The planner agent |
-| Who decides call order | TypeScript in the tool handler | The agent, guided by its prompt |
-| Agent output | JSON the server validates | Tool calls the server validates one at a time |
-| Single-flight guard, timeouts, run metrics | In the tool handlers | Overall timeout in the script only; no metrics yet |
-| Jira clarification comment and label | Supported (env flags) | Not supported yet |
+|                                            | Server-orchestrated (original)                                                   | Agent-driven (implemented)                         |
+| ------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Plan entry points                          | MCP `create_feature_spec`, `npm run plan:jira`, `npm run simulate -- plan` | `npm run plan:agent`                             |
+| Build entry points                         | MCP `build_feature_from_spec`, `npm run simulate -- build`                   | `npm run build:agent`                            |
+| Who calls `get_jira_issue`               | Nobody; server code reads Jira directly                                          | The planner agent                                  |
+| Who decides call order                     | TypeScript in the tool handler                                                   | The agent, guided by its prompt                    |
+| Agent output                               | JSON the server validates                                                        | Tool calls the server validates one at a time      |
+| Single-flight guard, timeouts, run metrics | In the tool handlers                                                             | Overall timeout in the script only; no metrics yet |
+| Jira clarification comment and label       | Supported (env flags)                                                            | Not supported yet                                  |
 
 The original tools `create_feature_spec` and `build_feature_from_spec` are unchanged and still available.
 
