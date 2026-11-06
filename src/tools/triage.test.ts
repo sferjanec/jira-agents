@@ -102,8 +102,9 @@ test("actual stdio server starts and preserves the original tools alongside the 
         await client.connect(transport);
         const { tools } = await client.listTools();
         assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-            "audit_jira_duplicates", "build_feature_from_spec", "create_feature_spec",
-            "fetch_candidate_descriptions", "fetch_triage_backlog", "get_jira_issue", "search_jira"
+            "audit_jira_duplicates", "build_feature_from_spec", "create_build_branch", "create_feature_spec",
+            "fetch_candidate_descriptions", "fetch_triage_backlog", "get_jira_issue", "get_repo_context",
+            "read_approved_plan", "save_feature_plan", "search_jira", "write_planned_file"
         ]);
         const invalid = await client.callTool({
             name: "fetch_candidate_descriptions", arguments: { issueKeys: [] }

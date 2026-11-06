@@ -42,7 +42,7 @@ flowchart TD
 
 ## 3. Sequence Detail
 
-For a per-step view of which agent calls which tool and when the MCP server is involved, see [feature-workflow-detailed.md](./feature-workflow-detailed.md).
+For a per-step view of which agent calls which tool and when the MCP server is involved, including the agent-driven variant (`npm run plan:agent` / `npm run build:agent`), see [feature-workflow-detailed.md](./feature-workflow-detailed.md).
 
 ```mermaid
 sequenceDiagram

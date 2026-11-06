@@ -39,9 +39,9 @@ export type FeatureSpecService = (
     clarifications: string[];
 }>;
 
-const clarificationPattern = /^- NEEDS CLARIFICATION:\s*(.+)$/gim;
+export const clarificationPattern = /^- NEEDS CLARIFICATION:\s*(.+)$/gim;
 
-function renderClarifications(issueKey: string, summary: string, questions: string[]): string {
+export function renderClarifications(issueKey: string, summary: string, questions: string[]): string {
     return [
         `# Clarifications needed: ${issueKey} - ${summary.replace(/[\r\n]+/g, " ")}`,
         "",

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { jira } from "./jiraClient.js";
 import type { JiraReader } from "./triage.js";
 import type { JiraCommenter, JiraLabeler } from "../tools/createFeatureSpec.js";
@@ -15,7 +17,19 @@ export const triageReader: JiraReader = {
         return response.data;
     }
 };
+// Offline testing: when JIRA_FIXTURES_DIR is set, issues come from KEY.txt files (first line is the
+// summary, the rest the description) and Jira is never contacted.
+async function getFixtureIssue(directory: string, issueKey: string) {
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(issueKey)) {
+        throw new Error("Invalid issue key.");
+    }
+    const [summary, ...body] = (await readFile(join(directory, `${issueKey}.txt`), "utf8")).split("\n");
+    return { key: issueKey, fields: { summary, description: body.join("\n") } };
+}
 export async function getIssue(issueKey: string) {
+    if (process.env.JIRA_FIXTURES_DIR) {
+        return getFixtureIssue(process.env.JIRA_FIXTURES_DIR, issueKey);
+    }
     const response = await jira.get(`/rest/api/3/issue/${encodeURIComponent(issueKey)}`);
     return response.data;
 }

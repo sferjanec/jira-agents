@@ -81,6 +81,14 @@ apply, independently of the VS Code Chat model picker.
 
 | Show audit help without Jira or model calls | `npm run example:audit -- --help` |
 
+| Plan a ticket with the server-orchestrated planner (real Jira) | `npm run plan:jira -- PROJ-123 /absolute/path/to/repository` |
+
+| Plan a ticket with an agent that calls the MCP tools itself | `npm run plan:agent -- PROJ-123 /absolute/path/to/repository` |
+
+| Same, with a fixture ticket and no Jira access | `npm run plan:agent -- SIM-101 /absolute/path/to/repository --simulate` |
+
+| Build from an approved plan with an agent that calls the MCP tools itself | `npm run build:agent -- SIM-101 /absolute/path/to/repository` |
+
 `npm start` is a JSON-RPC stdio server, not an interactive command prompt or HTTP
 
 endpoint. The example clients start and close their own server process; there is
@@ -121,7 +129,7 @@ Use these names and argument objects with a connected MCP client:
 
 |---|---|---|
 
-| `get_jira_issue` | `{"issueKey":"PROJ-123","includeFull":false}` | Compact issue summary; `includeFull: true` requests the full Jira payload. |
+| `get_jira_issue` | `{"issueKey":"PROJ-123","includeFull":false}` | Compact issue summary; `includeDetails: true` adds the description and recent comments; `includeFull: true` requests the full Jira payload. With `JIRA_FIXTURES_DIR` set, reads `KEY.txt` fixtures instead of Jira. |
 
 | `search_jira` | `{"jql":"project = PROJ ORDER BY created ASC","maxResults":10,"includeFull":false}` | JQL search; compact by default. Alternatively supply `projectKey` instead of `jql`. |
 
@@ -134,6 +142,24 @@ Use these names and argument objects with a connected MCP client:
 | `create_feature_spec` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path/to/repository"}` | Sends bounded issue and repository context to Copilot and saves a reviewable plan as `.specs/PROJ-452-TASK.md`. Does not generate code or overwrite existing plans. |
 
 | `build_feature_from_spec` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path/to/repository"}` | Explicitly builds from the reviewed plan on local branch `agent/proj-452-builder`; requires a clean worktree except for the approved untracked plan, writes only plan-listed files, and never pushes. |
+
+Fine-grained tools for the agent-driven plan and build flow (called by an agent, not by the server's own model):
+
+| Tool | Example arguments | Behavior |
+
+|---|---|---|
+
+| `get_repo_context` | `{"workspaceRoot":"/absolute/path/to/repository"}` | Read-only. Bounded layout, stack and instruction files. |
+
+| `save_feature_plan` | `{"issueKey":"PROJ-452","summary":"...","workspaceRoot":"/absolute/path","plan":{...}}` | Validates the plan schema and file paths, saves `.specs/PROJ-452-TASK.md`; never overwrites. If an open question starts with `NEEDS CLARIFICATION:`, saves a clarifications file instead. |
+
+| `read_approved_plan` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path"}` | Read-only. Returns the approved plan and the current contents of the files it lists. |
+
+| `create_build_branch` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path"}` | Requires a clean worktree except the plan; creates local branch `agent/proj-452-builder`; never pushes. |
+
+| `write_planned_file` | `{"issueKey":"PROJ-452","workspaceRoot":"/absolute/path","path":"src/a.ts","content":"..."}` | Writes one file listed in the approved plan, only on the build branch. |
+
+The agent-driven path does not yet post the Jira clarification comment or label, record run metrics, or apply the single-flight guard. See [feature-workflow-detailed.md](feature-workflow-detailed.md).
 
 Feature plan generation and building require Copilot access and an absolute
 repository path. The builder requires a Git repository with no unrelated

@@ -8,15 +8,25 @@ see the [quick reference](quick-reference.md).
 
 ## What it does
 
-The server currently exposes seven tools:
+The server currently exposes twelve tools:
 
-- `get_jira_issue` — fetch one Jira issue by key like `PROJ-123`
+- `get_jira_issue` — fetch one Jira issue by key like `PROJ-123` (`includeDetails` adds the description and recent comments)
 - `search_jira` — search Jira using JQL such as `project = PROJ ORDER BY priority DESC`
 - `fetch_triage_backlog` — fetch up to 100 compact backlog records with pagination and coverage metadata
 - `fetch_candidate_descriptions` — fetch bounded plain-text descriptions for up to 20 candidate issue keys
 - `audit_jira_duplicates` — run the TypeScript-coordinated retrieval and analysis agents through the Copilot SDK
 - `create_feature_spec` — combine one Jira issue with bounded repository context to create a reviewable plan in `.specs/`
 - `build_feature_from_spec` — explicitly build from a human-approved plan on a new local branch
+
+Five more are fine-grained tools for the agent-driven pattern, where a Copilot agent
+calls them itself instead of the server orchestrating the model (see
+[Agent-driven planning and building](#agent-driven-planning-and-building)):
+
+- `get_repo_context` — bounded repository layout, stack and instruction files (read-only)
+- `save_feature_plan` — validate a plan and save it as `.specs/{ISSUE-KEY}-TASK.md` (or a clarifications file); never overwrites
+- `read_approved_plan` — return the approved plan and the current contents of the files it lists (read-only)
+- `create_build_branch` — create the local branch `agent/{issue-key}-builder` from a clean worktree; never pushes
+- `write_planned_file` — write one plan-listed file on that branch
 
 ### Jira feature plan generation
 
@@ -80,6 +90,34 @@ JIRA_POST_CLARIFICATIONS=true EXPLORE_DEBUG=1 npm run plan:jira -- DEMO-1 /absol
 ```
 
 `EXPLORE_DEBUG=1` logs the HTTP status and Jira's error body if the comment fails.
+
+#### Agent-driven planning and building
+
+`create_feature_spec` and `build_feature_from_spec` run the model inside the server. The
+same workflow is also available as small tools that a Copilot agent calls itself, so
+other scripts and agents can reuse the server as a toolbox. A script starts the server
+as a subprocess and gives the agent session access to its tools:
+
+```bash
+npm run plan:agent -- DEMO-1 /absolute/path/to/repository              # real Jira
+npm run plan:agent -- SIM-101 /absolute/path/to/repository --simulate  # fixture ticket, no Jira
+npm run build:agent -- SIM-101 /absolute/path/to/repository            # after approving the plan
+```
+
+- **Plan:** the agent calls `get_jira_issue`, `get_repo_context`, explores the repo with
+  read-only `view`/`grep`/`glob` (same read policy as above), then calls `save_feature_plan`.
+- **Build:** the agent calls `read_approved_plan`, `create_build_branch`, then
+  `write_planned_file` once per file. It has no built-in file or shell tools.
+- **Guardrails live in the tools:** plans are schema-validated and never overwritten, and
+  `write_planned_file` refuses any path not listed in the approved plan or any call off the
+  build branch. Each script allows only its own MCP tools.
+- **`--simulate`** sets `JIRA_FIXTURES_DIR` for the server so `get_jira_issue` reads
+  `simulation/fixtures/KEY.txt` and Jira is never contacted. You can set that variable
+  yourself to run the server offline.
+- **Not yet in this path:** the Jira clarification comment and label, run metrics, and the
+  single-flight guard. Prompt-injection hardening is also deferred.
+
+See [feature-workflow-detailed.md](feature-workflow-detailed.md) for diagrams and a tool reference.
 
 #### Run metrics and the agent label (both optional, off by default)
 

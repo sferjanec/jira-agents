@@ -43,7 +43,7 @@ const maxExampleFiles = 5;
 const maxExampleFileCharacters = 10000;
 const maxContextFileCharacters = 25000;
 const maxOutputCharacters = 400000;
-const maxFileCharacters = 80000;
+export const maxFileCharacters = 80000;
 const allowedExampleExtensions = new Set([
     ".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".jsx",
     ".kt", ".py", ".rb", ".rs", ".scala", ".swift", ".ts", ".tsx"
@@ -87,7 +87,7 @@ function safeRelativePath(filePath: string): boolean {
         );
 }
 
-function parsePlannedPaths(issueKey: string, plan: string): string[] {
+export function parsePlannedPaths(issueKey: string, plan: string): string[] {
     if (plan.length > maxPlanCharacters ||
         !plan.startsWith(`# Feature Plan: ${issueKey} - `) ||
         !plan.includes(`> Source ticket: ${issueKey}`)) {

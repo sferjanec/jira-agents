@@ -14,8 +14,10 @@
     "simulate": "tsx src/example-simulate.ts",
     "metrics": "tsx src/cli/metrics.ts",
     "plan:jira": "tsx src/example-plan-jira.ts",
+    "plan:agent": "tsx src/example-plan-agent.ts",
+    "build:agent": "tsx src/example-build-agent.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/metrics/report.test.ts src/jira/formatters.test.ts src/jira/triage.test.ts src/tools/triage.test.ts src/agents/audit.test.ts src/tools/auditJiraDuplicates.test.ts src/tools/createFeatureSpec.test.ts src/agents/featureSpec.test.ts src/agents/repoContext.test.ts src/agents/readPolicy.test.ts src/agents/featureBuilder.test.ts src/tools/buildFeatureFromSpec.test.ts src/cli/audit.test.ts"
+    "test": "tsx --test src/metrics/report.test.ts src/jira/formatters.test.ts src/jira/triage.test.ts src/tools/triage.test.ts src/agents/audit.test.ts src/tools/auditJiraDuplicates.test.ts src/tools/createFeatureSpec.test.ts src/tools/featurePlanTools.test.ts src/tools/featureBuildTools.test.ts src/agents/featureSpec.test.ts src/agents/repoContext.test.ts src/agents/readPolicy.test.ts src/agents/featureBuilder.test.ts src/tools/buildFeatureFromSpec.test.ts src/cli/audit.test.ts"
   },
   "keywords": [],
   "author": "",

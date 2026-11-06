@@ -16,7 +16,7 @@ import { RunRecorder } from "../metrics/runMetrics.js";
 
 const execFileAsync = promisify(execFile);
 const issueKeySchema = z.string().max(100).regex(/^[A-Z][A-Z0-9_]*-\d+$/);
-const buildInputSchema = z.object({
+export const buildInputSchema = z.object({
     issueKey: issueKeySchema.describe("Issue key for the human-approved plan in .specs."),
     workspaceRoot: z.string().trim().min(1).max(4096)
         .describe("Absolute path to the root of a clean Git repository.")
@@ -33,7 +33,7 @@ export type BuildFeatureResult = {
 };
 export type FeatureBuildService = (input: BuildFeatureInput, signal: AbortSignal) => Promise<BuildFeatureResult>;
 
-async function git(root: string, args: string[]): Promise<string> {
+export async function git(root: string, args: string[]): Promise<string> {
     try {
         const result = await execFileAsync("git", args, {
             cwd: root,
@@ -59,7 +59,7 @@ function dirtyExceptPlan(status: string, issueKey: string): boolean {
     });
 }
 
-async function readApprovedPlan(root: string, issueKey: string): Promise<{ path: string; content: string }> {
+export async function readApprovedPlan(root: string, issueKey: string): Promise<{ path: string; content: string }> {
     const relativePath = `.specs/${issueKey}-TASK.md`;
     const path = join(root, relativePath);
     try {
@@ -93,7 +93,7 @@ async function readApprovedPlan(root: string, issueKey: string): Promise<{ path:
     }
 }
 
-async function preflightGit(root: string, issueKey: string): Promise<void> {
+export async function preflightGit(root: string, issueKey: string): Promise<void> {
     const gitRoot = await git(root, ["rev-parse", "--show-toplevel"]);
     if (await realpath(gitRoot) !== root) {
         throw new FeatureBuilderFailure("REPOSITORY_INVALID");
@@ -123,7 +123,7 @@ async function preflightGit(root: string, issueKey: string): Promise<void> {
     }
 }
 
-async function createBranch(root: string, issueKey: string): Promise<string> {
+export async function createBranch(root: string, issueKey: string): Promise<string> {
     const branch = `agent/${issueKey.toLowerCase()}-builder`;
     try {
         await execFileAsync("git", ["switch", "-c", branch], {

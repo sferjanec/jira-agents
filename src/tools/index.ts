@@ -4,6 +4,8 @@ import { registerSearchJira } from "./searchJira.js";
 import { registerTriageTools } from "./triage.js";
 import { jiraCommenter, jiraLabeler, triageReader } from "../jira/jiraService.js";
 import { copilotAuditService, registerAuditJiraDuplicates } from "./auditJiraDuplicates.js";
+import { registerFeatureBuildTools } from "./featureBuildTools.js";
+import { registerFeaturePlanTools } from "./featurePlanTools.js";
 import { createFeatureSpecService, registerCreateFeatureSpec } from "./createFeatureSpec.js";
 import { createFeatureBuildService, registerBuildFeatureFromSpec } from "./buildFeatureFromSpec.js";
 export function registerJiraTools(server: McpServer) {
@@ -15,4 +17,6 @@ export function registerJiraTools(server: McpServer) {
     const commenter = process.env.JIRA_POST_CLARIFICATIONS === "true" ? jiraCommenter : undefined;
     registerCreateFeatureSpec(server, createFeatureSpecService(triageReader, undefined, commenter, jiraLabeler(process.env.JIRA_AGENT_LABEL)));
     registerBuildFeatureFromSpec(server, createFeatureBuildService());
+    registerFeaturePlanTools(server);
+    registerFeatureBuildTools(server);
 }

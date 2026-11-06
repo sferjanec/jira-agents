@@ -138,7 +138,12 @@ export async function createFeaturePlan(
     } catch {
         throw new FeatureSpecFailure("MODEL_OUTPUT_INVALID");
     }
-    const result = featurePlanSchema.safeParse(parsed);
+    return validateAndRenderPlan(issue, parsed);
+}
+
+// Shared by the planner service and the save_feature_plan MCP tool so both enforce the same contract.
+export function validateAndRenderPlan(issue: FeatureIssue, candidate: unknown): string {
+    const result = featurePlanSchema.safeParse(candidate);
     if (!result.success || result.data.implementationSteps.some(
         (step) => step.files.some((file) => !isSafeRelativePath(file))
     )) {
@@ -146,3 +151,5 @@ export async function createFeaturePlan(
     }
     return renderPlan(issue, result.data);
 }
+
+export const featurePlanInputSchema = featurePlanSchema;
