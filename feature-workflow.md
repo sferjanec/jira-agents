@@ -42,19 +42,24 @@ flowchart TD
 
 ## 3. Sequence Detail
 
+For a per-step view of which agent calls which tool and when the MCP server is involved, see [feature-workflow-detailed.md](./feature-workflow-detailed.md).
+
 ```mermaid
 sequenceDiagram
     actor Dev as Developer
     participant MCP as MCP Server (TypeScript)
     participant Jira as Jira (read-only)
     participant Repo as Local Git Repo
-    participant LLM as Copilot SDK Session<br/>(no fs/shell/MCP tools)
+    participant LLM as Copilot SDK Session<br/>(planner: read-only view/grep/glob;<br/>builder: no tools)
 
     Note over Dev,LLM: Stage 1 - Plan
     Dev->>MCP: create_feature_spec(issueKey, workspaceRoot)
     MCP->>Jira: Fetch issue
     MCP->>Repo: Read bounded context
     MCP->>LLM: Ticket (untrusted) + context
+    loop Planner explores repo
+        LLM->>Repo: view / grep / glob (read policy enforced)
+    end
     LLM-->>MCP: Plan JSON
     MCP->>MCP: Validate schema and paths, render Markdown
     MCP->>Repo: Write .specs/KEY-TASK.md (never overwrite)
